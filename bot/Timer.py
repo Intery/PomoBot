@@ -6,22 +6,47 @@ from enum import Enum
 
 
 class Timer(object):
-    def __init__(self, ctx, channel, group_name, group_role, stages, statuschannel=None):
-        self.ctx = ctx
+    def __init__(self, name, role, channel, statuschannel, stages=None):
         self.channel = channel
         self.statuschannel = statuschannel
-        self.group_role = group_role
-        self.group_name = group_name
+        self.role = role
+        self.name = name
 
-        self.start_time = int(time.time())  # Session start time
-        self.current_stage_start = 0  # Time at which the current stage started
-        self.remaining = stages[0].duration  # Amount of time until the next stage starts
+        self.start_time = None  # Session start time
+        self.current_stage_start = None  # Time at which the current stage started
+        self.remaining = None  # Amount of time until the next stage starts
         self.state = TimerState.STOPPED  # Current state of the timer
 
         self.stages = stages  # List of stages in this timer
         self.current_stage = 0  # Index of current stage
 
-        self.subscribed = []  # List of subscribed members
+        self.subscribed = {}  # Dict of subbed members, userid maps to (user, lastupdate, timesubbed)
+
+        if stages:
+            self.setup(stages)
+
+    def __contains__(self, userid):
+        """
+        Containment interface acts as list of subscribers.
+        """
+        return userid in self.subscribed
+
+    def setup(self, stages):
+        """
+        Setup the timer with a list of TimerStages.
+        """
+        self.state = TimerState.STOPPED
+
+        self.stages = stages
+        self.current_stage = 0
+
+        self.start_time = int(time.time())
+
+        self.remaining = stages[0].duration
+        self.current_stage_start = int(time.time())
+
+        # Return self for method chaining
+        return self
 
     async def update_statuschannel(self):
         """
@@ -45,7 +70,8 @@ class Timer(object):
         """
         Return a formatted version of the time remaining until the next stage.
         """
-        diff = self.remaining
+        diff = int(60*self.stages[self.current_stage].duration - (time.time() - self.current_stage_start))
+        diff = max(diff, 0)
         hours = diff // 3600
         minutes = (diff % 3600) // 60
         seconds = diff % 60
@@ -56,35 +82,39 @@ class Timer(object):
         """
         Return a formatted status string for use in the pinned status message.
         """
-        # Collect the component strings and data
-        current_stage_name = self.stages[self.current_stage].name
-        remaining = self.pretty_remaining()
+        if self.state in [TimerState.RUNNING, TimerState.PAUSED]:
+            # Collect the component strings and data
+            current_stage_name = self.stages[self.current_stage].name
+            remaining = self.pretty_remaining()
 
-        subbed_names = [m.name for m in self.subscribed]
-        subbed_str = "```{}```".format(", ".join(subbed_names)) if subbed_names else "No subscribers!"
+            subbed_names = [m[0].name for m in self.subscribed.values()]
+            subbed_str = "```{}```".format(", ".join(subbed_names)) if subbed_names else "*No subscribers*"
 
-        # Create a list of lines for the stage string
-        longest_stage_len = max(len(stage.name) for stage in self.stages)
-        stage_format = "`{{prefix}}{{name:>{}}}:` {{dur}} min  {{current}}".format(longest_stage_len)
+            # Create a list of lines for the stage string
+            longest_stage_len = max(len(stage.name) for stage in self.stages)
+            stage_format = "`{{prefix}}{{name:>{}}}:` {{dur}} min  {{current}}".format(longest_stage_len)
 
-        stage_str_lines = [
-            stage_format.format(
-                prefix="▶️" if i == self.current_stage else "-",
-                name=stage.name,
-                dur=stage.duration,
-                current="(**{}**)".format(remaining) if i == self.current_stage else ""
-            ) for i, stage in enumerate(self.stages)
-        ]
-        # Create the stage string itself
-        stage_str = "\n".join(stage_str_lines)
+            stage_str_lines = [
+                stage_format.format(
+                    prefix="▶️" if i == self.current_stage else "​ ",
+                    name=stage.name,
+                    dur=stage.duration,
+                    current="(**{}**)".format(remaining) if i == self.current_stage else ""
+                ) for i, stage in enumerate(self.stages)
+            ]
+            # Create the stage string itself
+            stage_str = "\n".join(stage_str_lines)
 
-        # Create the final formatted status string
-        status_str = ("**{group_name}** ({current_stage_name})\n"
-                      "{stage_str}\n"
-                      "{subbed_str}").format(group_name=self.group_name,
-                                             current_stage_name=current_stage_name,
-                                             stage_str=stage_str,
-                                             subbed_str=subbed_str)
+            # Create the final formatted status string
+            status_str = ("**{name}** ({current_stage_name}){paused}\n"
+                          "{stage_str}\n"
+                          "{subbed_str}").format(name=self.name,
+                                                 paused=" ***Paused***" if self.state==TimerState.PAUSED else "",
+                                                 current_stage_name=current_stage_name,
+                                                 stage_str=stage_str,
+                                                 subbed_str=subbed_str)
+        elif self.state == TimerState.STOPPED:
+            status_str = "**{}**: *Not set up.*".format(self.name)
         return status_str
 
     def pretty_summary(self):
@@ -98,16 +128,20 @@ class Timer(object):
         Advance the timer to the new stage.
         """
         stage_index = stage_index % len(self.stages)
+        current_stage = self.stages[self.current_stage]
+        new_stage = self.stages[stage_index]
+
         # Handle notifications
         if notify:
-            old_stage_str = "**{}** finished! ".format(self.stages[self.current_stage].name)
+            old_stage_str = "**{}** finished! ".format(current_stage.name) if report_old else ""
             out_msg = await self.channel.send(
-                ("{}\n{}Starting **{}** ({} minutes).\n"
+                ("{}\n{}Starting **{}** ({} minutes). {}\n"
                  "Please react to this message to register your presence!").format(
-                     self.group_role.mention,
+                     self.role.mention,
                      old_stage_str,
-                     self.stages[stage_index].name,
-                     self.stages[stage_index].duration
+                     new_stage.name,
+                     new_stage.duration,
+                     new_stage.message
                  )
             )
             try:
@@ -137,7 +171,21 @@ class Timer(object):
                 await self.change_stage(self.current_stage + 1)
 
             await self.update_statuschannel()
-            await asyncio.sleep(3)
+            await asyncio.sleep(5)
+
+    async def sub(self, ctx, user):
+        """
+        Subscribe a new user to this timer list.
+        """
+        # Attempt to add the sub role
+        try:
+            await user.add_roles(self.role)
+        except discord.Forbidden:
+            await ctx.error_reply("Insufficient permissions to add the group role `{}`.".format(self.role.name))
+        except discord.NotFound:
+            await ctx.error_reply("Group role `{}` doesn't exist! This group is broken.".format(self.role.id))
+
+        self.subscribed[user.id] = (user, time.time(), 0)
 
 
 class TimerState(Enum):
@@ -162,18 +210,22 @@ class TimerStage(object):
         The human readable name of the stage.
     duration: int
         The number of minutes the stage lasts for.
-    focus_mode: bool
-        Whether the `focus mode` modifier is set for this stage.
+    message: str
+        An optional message to send when starting this stage.
+    focus: bool
+        Whether `focus` mode is set for this stage.
     modifiers: Dict(str, bool)
-        An unspecified collection of stage modifiers, stored for external user.
+        An unspecified collection of stage modifiers, stored for external use.
     """
-    __slots__ = ('name', 'duration', 'focus_mode', 'modifiers')
+    __slots__ = ('name', 'message', 'duration', 'focus', 'modifiers')
 
-    def __init__(self, name, duration, **modifiers):
+    def __init__(self, name, duration, message="", focus=False, **modifiers):
         self.name = name
         self.duration = duration
+        self.message = message
 
-        self.focus_mode = modifiers.get("focus_mode", False)
+        self.focus = focus
+
         self.modifiers = modifiers
 
 
@@ -210,9 +262,8 @@ async def update_channel(client, tchan):
         The client to use to edit the message.
     tchan: TimerChannel
         The timer channel to update.
-        Must have a current `msg` in order to update, this will not be generated.
     """
-    messages = [timer.pretty_pinstatus() for timer in tchan.timers if timer.state == TimerState.RUNNING]
+    messages = [timer.pretty_pinstatus() for timer in tchan.timers]
     if messages:
         desc = "\n\n".join(messages)
         embed = discord.Embed(
@@ -225,6 +276,78 @@ async def update_channel(client, tchan):
                 await tchan.msg.edit(embed=embed)
             except Exception:
                 pass
+        else:
+            # Attempt to generate a new message
+            try:
+                tchan.msg = await tchan.channel.send(embed=embed)
+            except discord.Forbidden:
+                await tchan.channel.send("I need permission to send embeds in this channel! Stopping all timers.")
+                for timer in tchan.timers:
+                    timer.state = TimerState.STOPPED
+
+            # Pin the message
+            try:
+                await tchan.msg.pin()
+            except Exception:
+                pass
+
+
+
+def create_timer(client, name, role, channel, statuschannel):
+    """
+    Helper to create a new timer, add it to the caches, and save it to disk.
+    """
+    # Create the new timer
+    new_timer = Timer(name, role, channel, statuschannel)
+
+    # Get the list of timer channels associated to the current guild
+    guild_channels = client.objects["timer_channels"].get(channel.guild.id)
+    if guild_channels is None:
+        guild_channels = {}
+        client.objects["timer_channels"][channel.guild.id] = guild_channels
+
+    # Add the new timer to the appropriate timer channel, creating if needed
+    if channel.id in guild_channels:
+        guild_channels[channel.id].timers.append(new_timer)
+    else:
+        tchan = TimerChannel(channel)
+        tchan.timers.append(new_timer)
+
+        guild_channels[channel.id] = tchan
+
+    # Store the new timer in guild config
+    channels = client.config.guilds.get(channel.guild.id, "timers") or []
+    channels.append((name, role.id, channel.id, statuschannel.id))
+    client.config.guilds.set(channel.guild.id, "timers", channels)
+
+
+def del_timer(client, timer):
+    """
+    Helper to delete a timer, both from caches and data.
+    """
+    guild = timer.channel.guild
+    tchan = client.objects["timer_channels"].get(guild.id, {}).get(timer.channel.id, None)
+
+    if tchan is not None:
+        tchan.timers.remove(timer)
+
+    channels = client.config.guilds.get(channel.guild.id, "timers")
+    channels.remove((timer.name, timer.role.id, timer.channel.id, timer.satuschannel.id))
+    client.config.guilds.set(channel.guild.id, "timers", channels)
+
+def get_tchan(ctx):
+    """
+    Gets the timer channel for the current channel, or None if it doesn't exist.
+    """
+    return ctx.client.objects["timer_channels"].get(ctx.guild.id, {}).get(ctx.ch.id, None)
+
+def get_timer_for(ctx, user):
+    """
+    Get the timer this user is subscribed to (in the current guild), or None if it doesn't exist.
+    """
+    guild_tchans = ctx.client.objects["timer_channels"].get(ctx.guild.id, None)
+    if guild_tchans is not None:
+        return next((timer for tchan in guild_tchans.values() for timer in tchan.timers if user.id in timer), None)
 
 
 async def timer_controlloop(client):
@@ -232,11 +355,75 @@ async def timer_controlloop(client):
     Global timer loop.
     Handles updating status messages across all active timer channels.
     """
-    # Dictionary of timer channels, {chanid: TimerChannel}
-    client.objects["timer_channels"] = {}
-
     while True:
-        for _, tchan in client.objects["timer_channels"].items():
-            asyncio.ensure_future(update_channel(client, tchan))
-
+        for tchans in client.objects["timer_channels"].values():
+            for tchan in tchans.values():
+                if any(timer.state == TimerState.RUNNING for timer in tchan.timers):
+                    asyncio.ensure_future(update_channel(client, tchan))
         await asyncio.sleep(2)
+
+
+async def load_timers(client):
+    # Get the guilds with active timers
+    timed_guilds = client.config.guilds.find_not_empty("timers")
+    for guildid in timed_guilds:
+        guild_channels = {}
+
+        guild = client.get_guild(guildid)
+        if guild is None:
+            continue
+
+        # Get the corresponding timers
+        raw_timers = client.config.guilds.get(guildid, "timers")
+        for name, roleid, channelid, statuschannelid in raw_timers:
+            # Get the objects corresponding to the ids
+            role = guild.get_role(roleid)
+            channel = guild.get_channel(channelid)
+            statuschannel = guild.get_channel(statuschannelid)
+
+            if role is None or channel is None or statuschannel is None:
+                # This timer doesn't exist
+                # TODO: Handle garbage collection
+                continue
+
+            # Create the new timer
+            new_timer = Timer(name, role, channel, statuschannel)
+
+            # Add it to the timer channel, creating if required
+            tchan = guild_channels.get(channelid, None)
+            if tchan is None:
+                tchan = TimerChannel(channel)
+                guild_channels[channelid] = tchan
+            tchan.timers.append(new_timer)
+        client.objects["timer_channels"][guildid] = guild_channels
+
+
+async def activity_tracker_message(client, message):
+    if message.guild.id in client.objects["timer_channels"]:
+        if message.channel.id in client.objects["timer_channels"][message.guild.id]:
+            client.objects["user_activity"][message.author.id] = time.time()
+
+
+async def activity_tracker_reaction(client, reaction, user):
+    message = reaction.message
+    if message.guild.id in client.objects["timer_channels"]:
+        if message.channel.id in client.objects["timer_channels"][message.guild.id]:
+            client.objects["user_activity"][user.id] = time.time()
+
+
+def initialise(client):
+    # Ensure required config entries exist
+    client.config.guilds.ensure_exists("timers")
+
+    # Load timers from database
+    client.objects["timer_channels"] = {}
+    client.add_after_event("ready", load_timers)
+
+    # Track user activity in timer channels
+    client.objects["user_activity"] = {}
+    client.add_after_event("message", activity_tracker_message)
+    client.add_after_event("reaction_add", activity_tracker_reaction)
+
+    # Start the loop
+    client.add_after_event("ready", timer_controlloop, 10)
+
