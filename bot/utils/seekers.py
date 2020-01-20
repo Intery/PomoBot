@@ -89,7 +89,7 @@ async def find_role(ctx, userstr, interactive=False, collection=None):
             role = roles[0]
 
     if role is None:
-        await ctx.error_reply("Couldn't find a role matching `{}`!")
+        await ctx.error_reply("Couldn't find a role matching `{}`!".format(userstr))
 
     return role
 
@@ -136,7 +136,7 @@ async def find_channel(ctx, userstr, interactive=False, collection=None, chan_ty
         raise ValueError("User string passed to find_channel was empty.")
 
     # Create the collection to search from args or guild channels
-    collection = collection if collection else ctx.guild.roles
+    collection = collection if collection else ctx.guild.channels
     if chan_type is not None:
         collection = [chan for chan in collection if chan.type == chan_type]
 
@@ -184,6 +184,6 @@ async def find_channel(ctx, userstr, interactive=False, collection=None, chan_ty
             chan = channels[0]
 
     if chan is None:
-        await ctx.error_reply("Couldn't find a channel matching `{}`!")
+        await ctx.error_reply("Couldn't find a channel matching `{}`!".format(userstr))
 
     return chan
