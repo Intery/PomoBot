@@ -95,7 +95,7 @@ class Timer(object):
             current_stage_name = self.stages[self.current_stage].name
             remaining = self.pretty_remaining()
 
-            subbed_names = [m[0].member.name for m in self.subscribed.values()]
+            subbed_names = [m.member.name for m in self.subscribed.values()]
             subbed_str = "```{}```".format(", ".join(subbed_names)) if subbed_names else "*No subscribers*"
 
             # Create a list of lines for the stage string
@@ -104,7 +104,7 @@ class Timer(object):
 
             stage_str_lines = [
                 stage_format.format(
-                    prefix="▶️" if i == self.current_stage else "​ ",
+                    prefix="->" if i == self.current_stage else "​  ",
                     name=stage.name,
                     dur=stage.duration,
                     current="(**{}**)".format(remaining) if i == self.current_stage else ""
@@ -135,6 +135,9 @@ class Timer(object):
         """
         Advance the timer to the new stage.
         """
+        # Update clocked times for all the subbed users
+        [subber.touch() for subber in self.subscribed]
+
         stage_index = stage_index % len(self.stages)
         current_stage = self.stages[self.current_stage]
         new_stage = self.stages[stage_index]
@@ -180,20 +183,6 @@ class Timer(object):
 
             await self.update_clock_channel()
             await asyncio.sleep(1)
-
-    async def sub(self, ctx, user):
-        """
-        Subscribe a new user to this timer list.
-        """
-        # Attempt to add the sub role
-        try:
-            await user.add_roles(self.role)
-        except discord.Forbidden:
-            await ctx.error_reply("Insufficient permissions to add the group role `{}`.".format(self.role.name))
-        except discord.NotFound:
-            await ctx.error_reply("Group role `{}` doesn't exist! This group is broken.".format(self.role.id))
-
-        self.subscribed[user.id] = (user, time.time(), 0)
 
 
 class TimerState(Enum):
@@ -302,6 +291,7 @@ class TimerSubscriber(object):
         'time_joined',
         'last_updated',
         'clocked_time',
+        'active',
         'last_seen',
         'warnings'
     )
@@ -319,6 +309,7 @@ class TimerSubscriber(object):
 
         self.last_updated = now
         self.clocked_time = 0
+        self.active = True
 
         self.last_seen = now
         self.warnings = 0
@@ -329,6 +320,28 @@ class TimerSubscriber(object):
     def bump(self):
         self.last_seen = int(time.time())
         self.warnings = 0
+
+    def touch(self):
+        """
+        Update the clocked time based on the active status.
+        """
+        now = int(time.time())
+        self.clocked_time += (now - self.last_updated) if self.active else 0
+        self.last_updated = now
+
+    def session_data(self):
+        """
+        Return session data in a format compatible with the registry.
+        """
+        self.touch()
+
+        return (
+            self.id,
+            self.member.guild.id,
+            self.timer.role.id,
+            self.time_joined,
+            self.clocked_time
+        )
 
     def serialise(self):
         return (

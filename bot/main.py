@@ -23,7 +23,7 @@ client.config = config
 client.load_dir(os.path.join(__location__, 'commands'))
 
 # Initialise the timer
-TimerInterface(client)
+TimerInterface(client, conf['session_store'])
 
 # Log and execute!
 log("Initial setup complete, logging in", context='SETUP')

@@ -3,13 +3,15 @@ import discord
 
 from .trackers import message_tracker, reaction_tracker
 from .Timer import Timer, TimerState, TimerChannel, TimerSubscriber
+from .registry import TimerRegistry
 
 
 class TimerInterface(object):
     save_interval = 120
 
-    def __init__(self, client):
+    def __init__(self, client, db_filename):
         self.client = client
+        self.registry = TimerRegistry(db_filename)
 
         self.guild_channels = {}
         self.channels = {}
@@ -170,7 +172,10 @@ class TimerInterface(object):
             await asyncio.sleep(1)
 
     def bump_user(self, userid, sourceid):
-        pass
+        if userid in self.subscribers:
+            subber = self.subscribers[userid]
+            if sourceid == 0 or sourceid == subber.timer.channel.id:
+                subber.bump()
 
     async def sub(self, ctx, member, timer):
         # Create the subscriber
@@ -188,4 +193,18 @@ class TimerInterface(object):
         self.subscribers[member.id] = subber
 
     def unsub(self, memberid):
-        pass
+        """
+        Unsubscribe a user from a timer, if they are subscribed.
+        Otherwise, do nothing.
+        Return the session data for ease of access.
+        """
+        subber = self.subscribers.get(memberid, None)
+        if subber is not None:
+            session = subber.session_data()
+            subber.active = False
+
+            self.subscribers.pop(memberid)
+            subber.timer.subscribed.pop(memberid)
+
+            self.registry.new_session(*session)
+            return session

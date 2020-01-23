@@ -1,2 +1,2 @@
 from .interface import TimerInterface
-from .Timer import Timer, TimerChannel, TimerSubscriber, TimerState
+from .Timer import Timer, TimerChannel, TimerSubscriber, TimerState, TimerStage
