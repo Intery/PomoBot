@@ -5,7 +5,7 @@ from logger import log
 from cmdClient.cmdClient import cmdClient
 
 from BotData import BotData
-from Timer import initialise
+from Timer import TimerInterface
 
 # Get the real location
 __location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
@@ -22,8 +22,8 @@ client.config = config
 # Load the commands
 client.load_dir(os.path.join(__location__, 'commands'))
 
-# Add the post-event handlers
-initialise(client)
+# Initialise the timer
+TimerInterface(client)
 
 # Log and execute!
 log("Initial setup complete, logging in", context='SETUP')

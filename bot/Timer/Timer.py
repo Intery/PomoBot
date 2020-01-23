@@ -6,9 +6,11 @@ from enum import Enum
 
 
 class Timer(object):
-    def __init__(self, name, role, channel, statuschannel, stages=None):
+    clock_period = 5
+
+    def __init__(self, name, role, channel, clock_channel, stages=None):
         self.channel = channel
-        self.statuschannel = statuschannel
+        self.clock_channel = clock_channel
         self.role = role
         self.name = name
 
@@ -21,6 +23,8 @@ class Timer(object):
         self.current_stage = 0  # Index of current stage
 
         self.subscribed = {}  # Dict of subbed members, userid maps to (user, lastupdate, timesubbed)
+
+        self.last_clockupdate = 0
 
         if stages:
             self.setup(stages)
@@ -48,12 +52,16 @@ class Timer(object):
         # Return self for method chaining
         return self
 
-    async def update_statuschannel(self):
+    async def update_clock_channel(self):
         """
         Try to update the name of the status channel with the current status
         """
         # Quit if there's no status channel set
-        if self.statuschannel is None:
+        if self.clock_channel is None:
+            return
+
+        # Quit if we aren't due for a clock update yet
+        if int(time.time()) - self.last_clockupdate < self.clock_period:
             return
 
         # Get the name and time strings
@@ -62,7 +70,7 @@ class Timer(object):
 
         # Update the channel name, or quit silently if something goes wrong.
         try:
-            await self.statuschannel.edit(name="{} - {}".format(stage_name, remaining_time))
+            await self.clock_channel.edit(name="{} - {}".format(stage_name, remaining_time))
         except Exception:
             pass
 
@@ -70,7 +78,7 @@ class Timer(object):
         """
         Return a formatted version of the time remaining until the next stage.
         """
-        diff = int(60*self.stages[self.current_stage].duration - (time.time() - self.current_stage_start))
+        diff = self.remaining
         diff = max(diff, 0)
         hours = diff // 3600
         minutes = (diff % 3600) // 60
@@ -87,7 +95,7 @@ class Timer(object):
             current_stage_name = self.stages[self.current_stage].name
             remaining = self.pretty_remaining()
 
-            subbed_names = [m[0].name for m in self.subscribed.values()]
+            subbed_names = [m[0].member.name for m in self.subscribed.values()]
             subbed_str = "```{}```".format(", ".join(subbed_names)) if subbed_names else "*No subscribers*"
 
             # Create a list of lines for the stage string
@@ -109,7 +117,7 @@ class Timer(object):
             status_str = ("**{name}** ({current_stage_name}){paused}\n"
                           "{stage_str}\n"
                           "{subbed_str}").format(name=self.name,
-                                                 paused=" ***Paused***" if self.state==TimerState.PAUSED else "",
+                                                 paused=" ***Paused***" if self.state == TimerState.PAUSED else "",
                                                  current_stage_name=current_stage_name,
                                                  stage_str=stage_str,
                                                  subbed_str=subbed_str)
@@ -170,8 +178,8 @@ class Timer(object):
             if self.remaining <= 0:
                 await self.change_stage(self.current_stage + 1)
 
-            await self.update_statuschannel()
-            await asyncio.sleep(5)
+            await self.update_clock_channel()
+            await asyncio.sleep(1)
 
     async def sub(self, ctx, user):
         """
@@ -251,179 +259,97 @@ class TimerChannel(object):
         self.timers = []
         self.msg = None
 
+    async def update(self):
+        """
+        Create or update the channel status message.
+        """
+        messages = [timer.pretty_pinstatus() for timer in self.timers]
+        if messages:
+            desc = "\n\n".join(messages)
+            embed = discord.Embed(
+                title="Pomodoro Timer Status",
+                description=desc,
+                timestamp=datetime.datetime.now()
+            )
+            if self.msg is not None:
+                try:
+                    await self.msg.edit(embed=embed)
+                except Exception:
+                    pass
+            else:
+                # Attempt to generate a new message
+                try:
+                    self.msg = await self.channel.send(embed=embed)
+                except discord.Forbidden:
+                    await self.channel.send("I require permission to send embeds in this channel! Stopping all timers.")
+                    for timer in self.timers:
+                        timer.state = TimerState.STOPPED
 
-async def update_channel(client, tchan):
-    """
-    Update status message in the provided channel.
+                # Pin the message
+                try:
+                    await self.msg.pin()
+                except Exception:
+                    pass
 
-    Arguments
-    ---------
-    client: discord.Client
-        The client to use to edit the message.
-    tchan: TimerChannel
-        The timer channel to update.
-    """
-    messages = [timer.pretty_pinstatus() for timer in tchan.timers]
-    if messages:
-        desc = "\n\n".join(messages)
-        embed = discord.Embed(
-            title="Pomodoro Timer Status",
-            description=desc,
-            timestamp=datetime.datetime.now()
+
+class TimerSubscriber(object):
+    __slots__ = (
+        'member',
+        'timer',
+        'interface',
+        'client',
+        'id',
+        'time_joined',
+        'last_updated',
+        'clocked_time',
+        'last_seen',
+        'warnings'
+    )
+
+    def __init__(self, member, timer, interface):
+        self.member = member
+        self.timer = timer
+        self.interface = interface
+
+        self.client = interface.client
+        self.id = member.id
+
+        now = int(time.time())
+        self.time_joined = now
+
+        self.last_updated = now
+        self.clocked_time = 0
+
+        self.last_seen = now
+        self.warnings = 0
+
+    def unsub(self):
+        self.interface.unsub(self.id)
+
+    def bump(self):
+        self.last_seen = int(time.time())
+        self.warnings = 0
+
+    def serialise(self):
+        return (
+            self.id,
+            self.member.guild.id,
+            self.timer.role.id,
+            self.time_joined,
+            self.last_updated,
+            self.time_subbed,
+            self.last_seen,
+            self.warnings
         )
-        if tchan.msg is not None:
-            try:
-                await tchan.msg.edit(embed=embed)
-            except Exception:
-                pass
-        else:
-            # Attempt to generate a new message
-            try:
-                tchan.msg = await tchan.channel.send(embed=embed)
-            except discord.Forbidden:
-                await tchan.channel.send("I need permission to send embeds in this channel! Stopping all timers.")
-                for timer in tchan.timers:
-                    timer.state = TimerState.STOPPED
 
-            # Pin the message
-            try:
-                await tchan.msg.pin()
-            except Exception:
-                pass
+    @classmethod
+    def deserialise(cls, member, timer, interface, data):
+        self = cls(member, timer, interface)
 
+        self.time_joined = data[3]
+        self.last_updated = data[4]
+        self.time_subbed = data[5]
+        self.last_seen = data[6]
+        self.warnings = data[7]
 
-
-def create_timer(client, name, role, channel, statuschannel):
-    """
-    Helper to create a new timer, add it to the caches, and save it to disk.
-    """
-    # Create the new timer
-    new_timer = Timer(name, role, channel, statuschannel)
-
-    # Get the list of timer channels associated to the current guild
-    guild_channels = client.objects["timer_channels"].get(channel.guild.id)
-    if guild_channels is None:
-        guild_channels = {}
-        client.objects["timer_channels"][channel.guild.id] = guild_channels
-
-    # Add the new timer to the appropriate timer channel, creating if needed
-    if channel.id in guild_channels:
-        guild_channels[channel.id].timers.append(new_timer)
-    else:
-        tchan = TimerChannel(channel)
-        tchan.timers.append(new_timer)
-
-        guild_channels[channel.id] = tchan
-
-    # Store the new timer in guild config
-    channels = client.config.guilds.get(channel.guild.id, "timers") or []
-    channels.append((name, role.id, channel.id, statuschannel.id))
-    client.config.guilds.set(channel.guild.id, "timers", channels)
-
-
-def del_timer(client, timer):
-    """
-    Helper to delete a timer, both from caches and data.
-    """
-    guild = timer.channel.guild
-    tchan = client.objects["timer_channels"].get(guild.id, {}).get(timer.channel.id, None)
-
-    if tchan is not None:
-        tchan.timers.remove(timer)
-
-    channels = client.config.guilds.get(channel.guild.id, "timers")
-    channels.remove((timer.name, timer.role.id, timer.channel.id, timer.satuschannel.id))
-    client.config.guilds.set(channel.guild.id, "timers", channels)
-
-def get_tchan(ctx):
-    """
-    Gets the timer channel for the current channel, or None if it doesn't exist.
-    """
-    return ctx.client.objects["timer_channels"].get(ctx.guild.id, {}).get(ctx.ch.id, None)
-
-def get_timer_for(ctx, user):
-    """
-    Get the timer this user is subscribed to (in the current guild), or None if it doesn't exist.
-    """
-    guild_tchans = ctx.client.objects["timer_channels"].get(ctx.guild.id, None)
-    if guild_tchans is not None:
-        return next((timer for tchan in guild_tchans.values() for timer in tchan.timers if user.id in timer), None)
-
-
-async def timer_controlloop(client):
-    """
-    Global timer loop.
-    Handles updating status messages across all active timer channels.
-    """
-    while True:
-        for tchans in client.objects["timer_channels"].values():
-            for tchan in tchans.values():
-                if any(timer.state == TimerState.RUNNING for timer in tchan.timers):
-                    asyncio.ensure_future(update_channel(client, tchan))
-        await asyncio.sleep(2)
-
-
-async def load_timers(client):
-    # Get the guilds with active timers
-    timed_guilds = client.config.guilds.find_not_empty("timers")
-    for guildid in timed_guilds:
-        guild_channels = {}
-
-        guild = client.get_guild(guildid)
-        if guild is None:
-            continue
-
-        # Get the corresponding timers
-        raw_timers = client.config.guilds.get(guildid, "timers")
-        for name, roleid, channelid, statuschannelid in raw_timers:
-            # Get the objects corresponding to the ids
-            role = guild.get_role(roleid)
-            channel = guild.get_channel(channelid)
-            statuschannel = guild.get_channel(statuschannelid)
-
-            if role is None or channel is None or statuschannel is None:
-                # This timer doesn't exist
-                # TODO: Handle garbage collection
-                continue
-
-            # Create the new timer
-            new_timer = Timer(name, role, channel, statuschannel)
-
-            # Add it to the timer channel, creating if required
-            tchan = guild_channels.get(channelid, None)
-            if tchan is None:
-                tchan = TimerChannel(channel)
-                guild_channels[channelid] = tchan
-            tchan.timers.append(new_timer)
-        client.objects["timer_channels"][guildid] = guild_channels
-
-
-async def activity_tracker_message(client, message):
-    if message.guild.id in client.objects["timer_channels"]:
-        if message.channel.id in client.objects["timer_channels"][message.guild.id]:
-            client.objects["user_activity"][message.author.id] = time.time()
-
-
-async def activity_tracker_reaction(client, reaction, user):
-    message = reaction.message
-    if message.guild.id in client.objects["timer_channels"]:
-        if message.channel.id in client.objects["timer_channels"][message.guild.id]:
-            client.objects["user_activity"][user.id] = time.time()
-
-
-def initialise(client):
-    # Ensure required config entries exist
-    client.config.guilds.ensure_exists("timers")
-
-    # Load timers from database
-    client.objects["timer_channels"] = {}
-    client.add_after_event("ready", load_timers)
-
-    # Track user activity in timer channels
-    client.objects["user_activity"] = {}
-    client.add_after_event("message", activity_tracker_message)
-    client.add_after_event("reaction_add", activity_tracker_reaction)
-
-    # Start the loop
-    client.add_after_event("ready", timer_controlloop, 10)
-
+        return self
