@@ -114,9 +114,10 @@ class Timer(object):
             stage_str = "\n".join(stage_str_lines)
 
             # Create the final formatted status string
-            status_str = ("**{name}** ({current_stage_name}){paused}\n"
+            status_str = ("{role}(**{name}**): {current_stage_name} {paused}\n"
                           "{stage_str}\n"
                           "{subbed_str}").format(name=self.name,
+                                                 role=self.role.mention,
                                                  paused=" ***Paused***" if self.state == TimerState.PAUSED else "",
                                                  current_stage_name=current_stage_name,
                                                  stage_str=stage_str,
@@ -136,7 +137,7 @@ class Timer(object):
         Advance the timer to the new stage.
         """
         # Update clocked times for all the subbed users
-        [subber.touch() for subber in self.subscribed]
+        [subber.touch() for subber in self.subscribed.values()]
 
         stage_index = stage_index % len(self.stages)
         current_stage = self.stages[self.current_stage]

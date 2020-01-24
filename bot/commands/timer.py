@@ -1,7 +1,6 @@
 # import datetime
 # import discord
 
-from Timer import TimerStage
 from cmdClient import cmd
 
 
@@ -45,6 +44,27 @@ async def cmd_unsub(ctx):
     ))
 
 
+@cmd("set")
+async def cmd_set(ctx):
+    timer = ctx.client.interface.get_timer_for(ctx.author.id)
+    if timer is None:
+        tchan = ctx.client.interface.channels.get(ctx.ch.id, None)
+        if tchan is None or not tchan.timers:
+            await ctx.error_reply("There are no timers in this channel!")
+        else:
+            await ctx.error_reply("Please join a group first!")
+        return
+
+    setupstr = ctx.arg_str or "Study, 25; Break, 5; Study, 25; Break, 5; Study, 25; Break, 10"
+    stages = ctx.client.interface.parse_setupstr(setupstr)
+
+    if stages is None:
+        return await ctx.error_reply("Didn't understand setup string!")
+
+    timer.setup(stages)
+    await ctx.reply("Timer pattern set up! Start when ready.")
+
+
 @cmd("start")
 async def cmd_start(ctx):
     timer = ctx.client.interface.get_timer_for(ctx.author.id)
@@ -56,7 +76,7 @@ async def cmd_start(ctx):
             await ctx.error_reply("Please join a group first!")
         return
 
-    # Temporary
-    stages = [TimerStage("Work", 50), TimerStage("Break", 10)]
-    timer.setup(stages)
+    if not timer.stages:
+        return await ctx.error_reply("Please set up the timer first!")
+
     await timer.start()

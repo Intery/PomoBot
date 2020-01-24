@@ -2,7 +2,7 @@ import asyncio
 import discord
 
 from .trackers import message_tracker, reaction_tracker
-from .Timer import Timer, TimerState, TimerChannel, TimerSubscriber
+from .Timer import Timer, TimerState, TimerChannel, TimerSubscriber, TimerStage
 from .registry import TimerRegistry
 
 
@@ -208,3 +208,17 @@ class TimerInterface(object):
 
             self.registry.new_session(*session)
             return session
+
+    @staticmethod
+    def parse_setupstr(setupstr):
+        stringy_stages = [stage.strip() for stage in setupstr.split(';')]
+
+        stages = []
+        for stringy_stage in stringy_stages:
+            parts = [part.strip() for part in stringy_stage.split(",", maxsplit=2)]
+
+            if len(parts) < 2 or not parts[1].isdigit():
+                return None
+            stages.append(TimerStage(parts[0], int(parts[1]), message=parts[2] if len(parts) > 2 else ""))
+
+        return stages

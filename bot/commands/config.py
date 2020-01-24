@@ -1,7 +1,7 @@
 from cmdClient import cmd
 from cmdClient.lib import ResponseTimedOut, UserCancelled
 
-from Timer import create_timer
+# from Timer import create_timer
 
 from utils import seekers
 
