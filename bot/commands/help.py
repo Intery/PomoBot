@@ -23,7 +23,7 @@ help_title = "CafePomodoro Documentation"
 
 @cmd("help",
      desc="Display information about commands.")
-async def cmd_addgrp(ctx):
+async def cmd_help(ctx):
     """
     Usage:
         help [cmdname]
@@ -35,7 +35,46 @@ async def cmd_addgrp(ctx):
         help help
     """
     if ctx.arg_str:
-        pass
+        # Attempt to fetch the command
+        command = ctx.client.cmd_cache.get(ctx.arg_str.strip(), None)
+        if command is None:
+            return await ctx.error_reply(
+                ("Command `{}` not found!\n"
+                 "Use the `help` command without arguments to see a list of commands.").format(ctx.arg_str)
+            )
+
+        help_fields = command.long_help
+        help_map = {field_name: i for i, (field_name, _) in enumerate(help_fields)}
+
+        if not help_map:
+            await ctx.reply("No documentation has been written for this command yet!")
+
+        usage_index = help_map.get("Usage", None)
+        if usage_index is not None:
+            help_fields[usage_index] = ("Usage", "`{}`".format('`\n`'.join(help_fields[usage_index][1].splitlines())))
+
+        examples_index = help_map.get("Examples", None)
+        if examples_index is not None:
+            help_fields[examples_index] = (
+                "Examples",
+                "`{}`".format('`\n`'.join(help_fields[examples_index][1].splitlines()))
+            )
+
+        aliases = getattr(command, 'aliases', [])
+        alias_str = "(aliases `{}`)".format("`, `".join(aliases)) if aliases else ""
+
+        # Build the embed
+        embed = discord.Embed(
+            title="Documentation for command `{}` {}".format(command.name, alias_str),
+            colour=discord.Colour(0x9b59b6)
+        )
+        for fieldname, fieldvalue in help_fields:
+            embed.add_field(name=fieldname, value=fieldvalue, inline=False)
+
+        embed.set_footer(text="[optional] denotes an optional argument and <required> a required one")
+
+        # Post the embed
+        await ctx.reply(embed=embed)
     else:
         # Build the command groups
         cmd_groups = {}
@@ -65,7 +104,7 @@ async def cmd_addgrp(ctx):
 
             active_fields.append((group_name, group_desc + '\n' + group_str))
 
-            if group_name == help_groups[-1][0] or sum([len(field.splitlines()) for _, field in active_fields]) > 20:
+            if group_name == help_groups[-1][0] or sum([len(field.splitlines()) for _, field in active_fields]) > 10:
                 # Roll a new embed
                 embed = discord.Embed(description=help_str, colour=discord.Colour(0x9b59b6), title=help_title)
 
