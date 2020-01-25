@@ -132,6 +132,8 @@ class TimerInterface(object):
         timers.append((group_name, group_role.id, bound_channel.id, clock_channel.id))
         self.client.config.guilds.set(guild.id, "timers", timers)
 
+        return new_timer
+
     def destroy_timer(self, timer):
         # Unsubscribe all members
         for sub in timer.subscribed:
