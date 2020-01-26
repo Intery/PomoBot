@@ -11,18 +11,21 @@ from cmdClient.lib import ResponseTimedOut, UserCancelled
      desc="Create a new timer group.")
 async def cmd_addgrp(ctx):
     """
-    Usage:
+    Usage``:
         newgroup
         newgroup <name>
         newgroup <name>, <role>, <channel>, <clock channel>
     Description:
         Creates a new group with the specified properties.
-        With no arguments or just `name`, uses guided prompts to get the remaining information.
+        With no arguments or just `name` given, prompts for the remaining information.
+    Parameters::
+        name: The name of the group to create.
+        role: The role given to people who join the group.
+        channel: The text channel which can access this group.
+        clock channel: The voice channel displaying the status of the group timer.
     Related:
-        Use `group` to see information about a particular group.
-        Use `groups` to view or manage the guild's groups.
-        Use `delgroup` to delete a group.
-    Examples:
+        group, groups, delgroup
+    Examples``:
         newgroup Espresso
         newgroup Espresso, Study Group 1, #study-channel, #espresso-vc
     """
@@ -105,3 +108,47 @@ async def newgroup_interactive(ctx, name=None, role=None, channel=None, clock_ch
 
     # We now have all the data we need
     return ctx.client.interface.create_timer(ctx.client, name, role, channel, clock_channel)
+
+
+@cmd("delgroup",
+     group="Timer Config",
+     desc="Remove a timer group.")
+async def cmd_dellgrp(ctx):
+    """
+    Usage``:
+        delgroup <name>
+    Description:
+        Deletes the given group from the collection of timer groups in the current guild.
+        If `name` is not given or matches multiple groups, will prompt for group selection.
+    Parameters::
+        name: The name of the group to delete.
+    Related:
+        group, groups, newgroup
+    Examples``:
+        delgroup Espresso
+    """
+    # Build lists of matching timers in the guild, and their names
+    guild_timers = ctx.client.interface.get_guild_timers(ctx.guild.id)
+    guild_timers = [timer for timer in guild_timers if ctx.arg_str in timer.name]
+    names = [timer.name for timer in guild_timers]
+
+    # Get the timer, prompting the user if there are multiple matches
+    if not names:
+        return await ctx.reply("No matching timers found!")
+    elif len(names) == 1:
+        timer = guild_timers[0]
+    else:
+        try:
+            selected = await ctx.selector(names)
+        except ResponseTimedOut:
+            raise ResponseTimedOut("Group selection timed out! No groups were deleted.") from None
+        except UserCancelled:
+            raise UserCancelled("User cancelled group selection! No groups were deleted.") from None
+
+        timer = guild_timers[selected]
+
+    # Delete the timer
+    ctx.client.interface.destroy_timer(timer)
+
+    # Notify the user
+    await ctx.reply("The group `{}` has been removed!".format(timer.name))
