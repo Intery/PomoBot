@@ -2,13 +2,18 @@ import discord
 
 from cmdClient import cmd
 from cmdClient.lib import ResponseTimedOut, UserCancelled
+from cmdClient.checks import in_guild
 
+from wards import timer_admin
+from utils import seekers, ctx_addons, timer  # noqa
 # from Timer import create_timer
 
 
 @cmd("newgroup",
-     group="Timer Config",
+     group="Configuration",
      desc="Create a new timer group.")
+@in_guild()
+@timer_admin()
 async def cmd_addgrp(ctx):
     """
     Usage``:
@@ -46,7 +51,7 @@ async def cmd_addgrp(ctx):
             raise ResponseTimedOut("Selection timed out, no group was created.") from None
 
         # Create the timer
-        timer = ctx.client.interface.create_timer(ctx.client, name, role, channel, clockchannel)
+        timer = ctx.client.interface.create_timer(name, role, channel, clockchannel)
     elif len(args) >= 1 and args[0]:
         timer = await newgroup_interactive(ctx, name=args[0])
     else:
@@ -90,10 +95,10 @@ async def newgroup_interactive(ctx, name=None, role=None, channel=None, clock_ch
                 "I must have permission to update the name of this channel.\n"
                 "(Accepted input: Channel name or partial name, channel id or channel mention.)"
             )
-            channel = await ctx.find_channel(
+            clock_channel = await ctx.find_channel(
                 clock_channel_str.strip(),
                 interactive=True,
-                type=discord.ChannelType.voice
+                chan_type=discord.ChannelType.voice
             )
     except UserCancelled:
         raise UserCancelled(
@@ -107,13 +112,15 @@ async def newgroup_interactive(ctx, name=None, role=None, channel=None, clock_ch
         ) from None
 
     # We now have all the data we need
-    return ctx.client.interface.create_timer(ctx.client, name, role, channel, clock_channel)
+    return ctx.client.interface.create_timer(name, role, channel, clock_channel)
 
 
 @cmd("delgroup",
-     group="Timer Config",
+     group="Configuration",
      desc="Remove a timer group.")
-async def cmd_dellgrp(ctx):
+@in_guild()
+@timer_admin()
+async def cmd_delgrp(ctx):
     """
     Usage``:
         delgroup <name>
@@ -127,28 +134,61 @@ async def cmd_dellgrp(ctx):
     Examples``:
         delgroup Espresso
     """
-    # Build lists of matching timers in the guild, and their names
-    guild_timers = ctx.client.interface.get_guild_timers(ctx.guild.id)
-    guild_timers = [timer for timer in guild_timers if ctx.arg_str in timer.name]
-    names = [timer.name for timer in guild_timers]
+    try:
+        timer = await ctx.get_timers_matching(ctx.arg_str, channel_only=False)
+    except ResponseTimedOut:
+        raise ResponseTimedOut("Group selection timed out. No groups were deleted.") from None
+    except UserCancelled:
+        raise UserCancelled("User cancelled group selection. No groups were deleted.") from None
 
-    # Get the timer, prompting the user if there are multiple matches
-    if not names:
-        return await ctx.reply("No matching timers found!")
-    elif len(names) == 1:
-        timer = guild_timers[0]
-    else:
-        try:
-            selected = await ctx.selector(names)
-        except ResponseTimedOut:
-            raise ResponseTimedOut("Group selection timed out! No groups were deleted.") from None
-        except UserCancelled:
-            raise UserCancelled("User cancelled group selection! No groups were deleted.") from None
-
-        timer = guild_timers[selected]
+    if timer is None:
+        return await ctx.error_reply("No matching timers found!")
 
     # Delete the timer
     ctx.client.interface.destroy_timer(timer)
 
     # Notify the user
     await ctx.reply("The group `{}` has been removed!".format(timer.name))
+
+
+@cmd("adminrole",
+     group="Configuration",
+     desc="View or configure the timer admin role")
+@in_guild()
+async def cmd_adminrole(ctx):
+    """
+    Usage``:
+        adminrole
+        adminrole <role>
+    Description:
+        View the timer admin role (in the first usage), or set it to the provided role (in the second usage).
+        The timer admin role allows creation and deletion of group timers,
+        as well as modification of the guild registry and forcing timer operations.
+
+        *Setting the timer admin role requires the guild permission `manage_guild`.*
+    Parameters::
+        role: The name, partial name, or id of the new timer admin role.
+    """
+    if ctx.arg_str:
+        if not ctx.author.guild_permissions.manage_guild:
+            return await ctx.error_reply("You need the `manage_guild` permission to change the timer admin role.")
+
+        try:
+            role = await ctx.find_role(ctx.arg_str, interactive=True)
+        except UserCancelled:
+            raise UserCancelled("User cancelled role selection. Timer admin role unchanged.") from None
+        except ResponseTimedOut:
+            raise ResponseTimedOut("Role selection timed out. Timer admin role unchanged.") from None
+
+        ctx.client.config.guilds.set(ctx.guild.id, "timeradmin", role.id)
+
+        await ctx.embedreply("Timer admin role set to {}.".format(role.mention), color=discord.Colour.green())
+    else:
+        roleid = ctx.client.config.guilds.get(ctx.guild.id, "timeradmin")
+        if roleid is None:
+            return await ctx.embedreply("No timer admin role set for this guild.")
+        role = ctx.guild.get_role(roleid)
+        if role is None:
+            await ctx.embedreply("Timer admin role set to a nonexistent role `{}`.".format(roleid))
+        else:
+            await ctx.embedreply("Timer admin role is {}.".format(role.mention))
