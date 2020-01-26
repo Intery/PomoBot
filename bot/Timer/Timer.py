@@ -73,6 +73,7 @@ class Timer(object):
             await self.clock_channel.edit(name="{} - {}".format(stage_name, remaining_time))
         except Exception:
             pass
+        self.last_clockupdate = int(time.time())
 
     def pretty_remaining(self):
         """
@@ -123,7 +124,7 @@ class Timer(object):
                                                  stage_str=stage_str,
                                                  subbed_str=subbed_str)
         elif self.state == TimerState.STOPPED:
-            status_str = "**{}**: *Not set up.*".format(self.name)
+            status_str = "**{}**: *Inactive.*".format(self.name)
         return status_str
 
     def pretty_summary(self):
