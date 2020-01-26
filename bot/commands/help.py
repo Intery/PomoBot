@@ -3,18 +3,19 @@ import discord
 from cmdClient import cmd
 
 from utils.lib import prop_tabulate
+from utils import interactive  # noqa
 
 
 # Set the command groups to appear in the help
 help_groups = [
-    ("Timer Control", "*Commands to interact with your timer, or the ones in the current channel.*"),
-    ("Registry", "*Guild timer leaderboard and session history.*"),
-    ("Timer Config", "*Create timers and configure their behaviour.*"),
+    ("Timer", "*View and interact with the guild group timers.*"),
+    ("Registry", "*Timer leaderboard and session history.*"),
+    ("Configuration", "*Create groups and configure their behaviour.*"),
     ("Misc", "*Other miscellaneous commands.*")
 ]
 
 # Set the main help string
-help_str = ("Flexible study group timer using a customisable Pomodoro system!\n"
+help_str = ("Flexible study or work group timer using a customisable Pomodoro system!\n"
             "Supports multiple groups and different timer setups.\n"
             "Use the `guide` command to see a quick usage guide.")
 
