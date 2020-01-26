@@ -224,3 +224,92 @@ async def _pager(ctx, out_msg, pages, locked):
             pass
     except discord.NotFound:
         pass
+
+@Context.util
+async def input(ctx, msg="", timeout=120):
+    """
+    Listen for a response in the current channel, from ctx.author.
+    Returns the response from ctx.author, if it is provided.
+    Parameters
+    ----------
+    msg: string
+        Allows a custom input message to be provided.
+        Will use default message if not provided.
+    timeout: int
+        Number of seconds to wait before timing out.
+    Raises
+    ------
+    cmdClient.lib.ResponseTimedOut:
+        Raised when ctx.author does not provide a response before the function times out.
+    """
+    # Deliver prompt
+    offer_msg = await ctx.reply(msg or "Please enter your input.")
+
+    # Criteria for the input message
+    def checks(m):
+        return m.author == ctx.author and m.channel == ctx.ch
+
+    # Listen for the reply
+    try:
+        result_msg = await ctx.client.wait_for("message", check=checks, timeout=timeout)
+    except asnycio.TimeoutError:
+        raise ResponseTimedOut("Session timed out waiting for user response.") from None
+
+    result = result_msg.content
+
+    # Attempt to delete the prompt and reply messages
+    try:
+        await offer_msg.delete()
+        await result_msg.delete()
+    except Exception:
+        pass
+
+    return result
+
+
+@Context.util
+async def ask(ctx, msg, timeout=30, use_msg=None, del_on_timeout=False):
+    """
+    Ask ctx.author a yes/no question.
+    Returns 0 if ctx.author answers no
+    Returns 1 if ctx.author answers yes
+    Parameters
+    ----------
+    msg: string
+        Adds the question to the message string.
+        Requires an input.
+    timeout: int
+        Number of seconds to wait before timing out.
+    use_msg: string
+        A completely custom string to use instead of the default string.
+    del_on_timeout: bool
+        Whether to delete the question if it times out.
+    Raises
+    ------
+    Nothing
+    """
+    out = "{} {}".format(msg, "`y(es)`/`n(o)`")
+
+    offer_msg = use_msg or await ctx.reply(out)
+    if use_msg:
+        await use_msg.edit(content=msg)
+
+    result_msg = await ctx.listen_for(["y", "yes", "n", "no"], timeout=timeout)
+
+    if result_msg is None:
+        if del_on_timeout:
+            try:
+                await offer_msg.delete()
+            except Exception:
+                pass
+        return None
+    result = result_msg.content.lower()
+    try:
+        if not use_msg:
+            await offer_msg.delete()
+        await result_msg.delete()
+    except Exception:
+        pass
+    if result in ["n", "no"]:
+        return 0
+    return 1
