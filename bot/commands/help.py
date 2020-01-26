@@ -43,35 +43,60 @@ async def cmd_help(ctx):
                  "Use the `help` command without arguments to see a list of commands.").format(ctx.arg_str)
             )
 
-        help_fields = command.long_help
+        help_fields = command.long_help.copy()
         help_map = {field_name: i for i, (field_name, _) in enumerate(help_fields)}
 
         if not help_map:
             await ctx.reply("No documentation has been written for this command yet!")
 
+        for name, pos in help_map.items():
+            if name.endswith("``"):
+                # Handle codeline help fields
+                help_fields[pos] = (
+                    name.strip("`"),
+                    "`{}`".format('`\n`'.join(help_fields[pos][1].splitlines()))
+                )
+            elif name.endswith(":"):
+                # Handle property/value help fields
+                lines = help_fields[pos][1].splitlines()
+
+                names = []
+                values = []
+                for line in lines:
+                    split = line.split(":", 1)
+                    names.append(split[0] if len(split) > 1 else "")
+                    values.append(split[-1])
+
+                help_fields[pos] = (
+                    name.strip(':'),
+                    prop_tabulate(names, values)
+                )
+            elif name == "Related":
+                # Handle the related field
+                names = [cmd_name.strip() for cmd_name in help_fields[pos][1].split(',')]
+                names.sort(key=len)
+                values = [getattr(ctx.client.cmd_cache.get(cmd_name, None), 'desc', "") for cmd_name in names]
+                help_fields[pos] = (
+                    name,
+                    prop_tabulate(names, values)
+                )
+
         usage_index = help_map.get("Usage", None)
         if usage_index is not None:
             help_fields[usage_index] = ("Usage", "`{}`".format('`\n`'.join(help_fields[usage_index][1].splitlines())))
 
-        examples_index = help_map.get("Examples", None)
-        if examples_index is not None:
-            help_fields[examples_index] = (
-                "Examples",
-                "`{}`".format('`\n`'.join(help_fields[examples_index][1].splitlines()))
-            )
-
         aliases = getattr(command, 'aliases', [])
-        alias_str = "(aliases `{}`)".format("`, `".join(aliases)) if aliases else ""
+        alias_str = "(Aliases `{}`.)".format("`, `".join(aliases)) if aliases else ""
 
         # Build the embed
         embed = discord.Embed(
-            title="Documentation for command `{}` {}".format(command.name, alias_str),
+            title="`{}` command documentation. {}".format(command.name, alias_str),
             colour=discord.Colour(0x9b59b6)
         )
         for fieldname, fieldvalue in help_fields:
             embed.add_field(name=fieldname, value=fieldvalue, inline=False)
 
-        embed.set_footer(text="[optional] denotes an optional argument and <required> a required one")
+        embed.set_footer(text="[optional] and <required> denote optional and required arguments, respectively.")
 
         # Post the embed
         await ctx.reply(embed=embed)
