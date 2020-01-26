@@ -209,6 +209,11 @@ class TimerInterface(object):
             self.subscribers.pop(memberid)
             subber.timer.subscribed.pop(memberid)
 
+            try:
+                await subber.member.remove_roles(subber.timer.role)
+            except Exception:
+                pass
+
             self.registry.new_session(*session)
             return session
 
