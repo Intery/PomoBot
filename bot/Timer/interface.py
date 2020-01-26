@@ -84,18 +84,18 @@ class TimerInterface(object):
                     # TODO: Handle garbage collection
                     continue
 
-            # Create the new timer
-            new_timer = Timer(name, role, channel, clock_channel)
+                # Create the new timer
+                new_timer = Timer(name, role, channel, clock_channel)
 
-            # Get the timer channel, or create it
-            tchan = self.channels.get(channelid, None)
-            if tchan is None:
-                tchan = TimerChannel(channel)
-                channels.append(tchan)
-                self.channels[channelid] = tchan
+                # Get the timer channel, or create it
+                tchan = self.channels.get(channelid, None)
+                if tchan is None:
+                    tchan = TimerChannel(channel)
+                    channels.append(tchan)
+                    self.channels[channelid] = tchan
 
-            # Bind the timer to the channel
-            tchan.timers.append(new_timer)
+                # Bind the timer to the channel
+                tchan.timers.append(new_timer)
 
             # Assign the channels to the guild
             self.guild_channels[guildid] = channels
@@ -150,7 +150,8 @@ class TimerInterface(object):
         # Update the guild timer config
         guild = timer.channel.guild
         timers = self.client.config.guilds.get(guild.id, "timers") or []
-        timers.remove((timer.name, timer.role.id, timer.channel.id, timer.clock_channel.id))
+        tup = next(tup for tup in timers if tup[0] == timer.name and tup[1] == timer.role.id)
+        timers.remove(tup)
         self.client.config.guilds.set(guild.id, "timers", timers)
 
     def get_timer_for(self, memberid):
@@ -167,7 +168,7 @@ class TimerInterface(object):
 
     def get_guild_timers(self, guildid):
         if guildid in self.guild_channels:
-            return (timer for tchan in self.guild_channels[guildid] for timer in tchan.timers)
+            return [timer for tchan in self.guild_channels[guildid] for timer in tchan.timers]
 
     async def wait_until_ready(self):
         while not self.ready:
