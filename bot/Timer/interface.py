@@ -52,8 +52,7 @@ class TimerInterface(object):
     async def updateloop(self):
         while True:
             for tchan in self.channels.values():
-                if any(timer.state == TimerState.RUNNING for timer in tchan.timers):
-                    asyncio.ensure_future(tchan.update())
+                asyncio.ensure_future(tchan.update())
             await asyncio.sleep(2)
 
     def load_timers(self):
@@ -136,8 +135,8 @@ class TimerInterface(object):
 
     def destroy_timer(self, timer):
         # Unsubscribe all members
-        for sub in timer.subscribed:
-            sub.unsub()
+        for sub in timer.subscribed.values():
+            asyncio.ensure_future(sub.unsub())
 
         # Stop the timer
         timer.state = TimerState.STOPPED
@@ -195,7 +194,7 @@ class TimerInterface(object):
         timer.subscribed[member.id] = subber
         self.subscribers[member.id] = subber
 
-    def unsub(self, memberid):
+    async def unsub(self, memberid):
         """
         Unsubscribe a user from a timer, if they are subscribed.
         Otherwise, do nothing.

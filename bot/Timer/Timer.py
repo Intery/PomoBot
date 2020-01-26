@@ -7,6 +7,7 @@ from enum import Enum
 
 class Timer(object):
     clock_period = 5
+    max_warning = 1
 
     def __init__(self, name, role, channel, clock_channel, stages=None):
         self.channel = channel
@@ -91,13 +92,13 @@ class Timer(object):
         """
         Return a formatted status string for use in the pinned status message.
         """
+        subbed_names = [m.member.name for m in self.subscribed.values()]
+        subbed_str = "```{}```".format(", ".join(subbed_names)) if subbed_names else "*No members*"
+
         if self.state in [TimerState.RUNNING, TimerState.PAUSED]:
             # Collect the component strings and data
             current_stage_name = self.stages[self.current_stage].name
             remaining = self.pretty_remaining()
-
-            subbed_names = [m.member.name for m in self.subscribed.values()]
-            subbed_str = "```{}```".format(", ".join(subbed_names)) if subbed_names else "*No subscribers*"
 
             # Create a list of lines for the stage string
             longest_stage_len = max(len(stage.name) for stage in self.stages)
@@ -115,7 +116,7 @@ class Timer(object):
             stage_str = "\n".join(stage_str_lines)
 
             # Create the final formatted status string
-            status_str = ("{role}(**{name}**): {current_stage_name} {paused}\n"
+            status_str = ("**{name}**: {current_stage_name} {paused}\n"
                           "{stage_str}\n"
                           "{subbed_str}").format(name=self.name,
                                                  role=self.role.mention,
@@ -124,7 +125,7 @@ class Timer(object):
                                                  stage_str=stage_str,
                                                  subbed_str=subbed_str)
         elif self.state == TimerState.STOPPED:
-            status_str = "**{}**: *Inactive.*".format(self.name)
+            status_str = "**{}**: *Timer not running.*\n{}".format(self.name, subbed_str)
         return status_str
 
     def pretty_summary(self):
@@ -137,36 +138,75 @@ class Timer(object):
         """
         Advance the timer to the new stage.
         """
-        # Update clocked times for all the subbed users
-        [subber.touch() for subber in self.subscribed.values()]
-
         stage_index = stage_index % len(self.stages)
         current_stage = self.stages[self.current_stage]
         new_stage = self.stages[stage_index]
 
+        # Update clocked times for all the subbed users and handle inactivity
+        needs_warning = []
+        unsubs = []
+        for subber in self.subscribed.values():
+            subber.touch()
+            if inactivity_check:
+                if subber.warnings >= self.max_warning:
+                    unsubs.append(subber)
+                elif (time.time() - subber.last_seen) > current_stage.duration * 60:
+                    subber.warnings += 1
+                    if subber.warnings >= self.max_warning:
+                        needs_warning.append(subber)
+
+        # Handle not having any subscribers
+        empty = (len(self.subscribed) == 0)
+
         # Handle notifications
         if notify:
             old_stage_str = "**{}** finished! ".format(current_stage.name) if report_old else ""
-            out_msg = await self.channel.send(
-                ("{}\n{}Starting **{}** ({} minutes). {}\n"
-                 "Please react to this message to register your presence!").format(
-                     self.role.mention,
-                     old_stage_str,
-                     new_stage.name,
-                     new_stage.duration,
-                     new_stage.message
-                 )
-            )
-            try:
-                await out_msg.add_reaction("✅")
-            except Exception:
-                pass
+            if needs_warning:
+                warning_str = "{} you will be unsubscribed on the next stage if you do not react.\n".format(
+                    ", ".join(subber.member.mention for subber in needs_warning)
+                )
+            else:
+                warning_str = ""
+            if unsubs:
+                unsub_str = "{} you have been unsubscribed due to inactivity!\n".format(
+                    ", ".join(subber.member.mention for subber in unsubs)
+                )
+            else:
+                unsub_str = ""
+
+            if not empty:
+                out_msg = await self.channel.send(
+                    ("{}\n{}Starting **{}** ({} minutes). {}\n"
+                     "Please react to this message to register your presence!\n{}{}").format(
+                         self.role.mention,
+                         old_stage_str,
+                         new_stage.name,
+                         new_stage.duration,
+                         new_stage.message,
+                         warning_str,
+                         unsub_str
+                     )
+                )
+                try:
+                    await out_msg.add_reaction("✅")
+                except Exception:
+                    pass
+            else:
+                await self.channel.send(
+                    ("{}\n "
+                     "{}No subscribers, stopping group timer.").format(
+                         self.role.mention,
+                         old_stage_str
+                     )
+                )
+                self.state = TimerState.STOPPED
+
+        for subber in unsubs:
+            await subber.unsub()
 
         self.current_stage = stage_index
         self.current_stage_start = int(time.time())
         self.remaining = self.stages[stage_index].duration * 60
-
-        # Handle inactivity
         pass
 
     async def start(self):
@@ -267,7 +307,18 @@ class TimerChannel(object):
                     await self.msg.edit(embed=embed)
                 except Exception:
                     pass
-            else:
+
+                """
+                if all(timer.state == TimerState.STOPPED for timer in self.timers):
+                    # Unpin and unset message
+                    try:
+                        await self.msg.unpin()
+                    except Exception:
+                        pass
+
+                    self.msg = None
+                """
+            elif any(timer.state != TimerState.STOPPED for timer in self.timers):
                 # Attempt to generate a new message
                 try:
                     self.msg = await self.channel.send(embed=embed)
@@ -316,8 +367,8 @@ class TimerSubscriber(object):
         self.last_seen = now
         self.warnings = 0
 
-    def unsub(self):
-        self.interface.unsub(self.id)
+    async def unsub(self):
+        await self.interface.unsub(self.id)
 
     def bump(self):
         self.last_seen = int(time.time())

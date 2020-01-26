@@ -47,7 +47,7 @@ async def cmd_join(ctx):
             timer.stages[timer.current_stage].name,
             timer.pretty_remaining()
         )
-    elif time.stages:
+    elif timer.stages:
         message += "\nGroup timer is set up but not running. Use `start` to start the timer!"
     else:
         message += "\nSet up the timer with `set`!"
@@ -66,7 +66,7 @@ async def cmd_unsub(ctx):
             "You need to join a group before you can leave one!"
         )
 
-    session = ctx.client.interface.unsub(ctx.author.id)
+    session = await ctx.client.interface.unsub(ctx.author.id)
     clocked = session[-1]
 
     await ctx.reply("You have been unsubscribed from **{}**! You were subscribed for **{}** seconds.".format(
