@@ -156,14 +156,28 @@ async def cmd_start(ctx):
 
 @cmd("groups",
      group="Timer",
-     desc="View the guild's groups.")
+     desc="View the guild's groups.",
+     aliases=["timers"])
 async def cmd_groups(ctx):
-    pass
+    # Handle there being no timers
+    if not ctx.client.interface.get_guild_timers(ctx.guild.id):
+        return await ctx.error_reply("There are no groups set up in this guild!")
+
+    # Build the embed description
+    sections = []
+    for tchan in ctx.client.interface.guild_channels[ctx.guild.id]:
+        sections.append("{}\n\n{}".format(
+            tchan.channel.mention,
+            "\n\n".join(timer.pretty_summary() for timer in tchan.timers)
+        ))
+
+    await ctx.embedreply("\n\n\n".join(sections), title="Group timers in this guild")
 
 
 @cmd("status",
      group="Timer",
-     desc="View detailed information about a group.")
+     desc="View detailed information about a group.",
+     aliases=["group"])
 async def cmd_group(ctx):
     """
     Usage``:

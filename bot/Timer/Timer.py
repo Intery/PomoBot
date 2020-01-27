@@ -130,9 +130,34 @@ class Timer(object):
 
     def pretty_summary(self):
         """
-        Return a one line summary status message.
+        Return a short summary status message.
         """
-        pass
+        if self.stages:
+            stage_str = "/".join(("**{}**".format(stage.duration) if i == self.current_stage else str(stage.duration))
+                                 for i, stage in enumerate(self.stages))
+        else:
+            stage_str = "*Not set up.*"
+
+        if self.state == TimerState.RUNNING:
+            status_str = "Stage `{}`, `{}` remaining\n".format(self.stages[self.current_stage].name,
+                                                               self.pretty_remaining())
+        elif self.state == TimerState.PAUSED:
+            status_str = "*Timer is paused.*\n"
+        elif self.state == TimerState.STOPPED:
+            status_str = ""
+
+        if self.subscribed:
+            member_str = "Members: " + ", ".join(s.member.mention for s in self.subscribed.values())
+        else:
+            member_str = "*No members.*"
+
+        return "{} ({}): {}\n{}{}".format(
+            self.role.mention,
+            self.name,
+            stage_str,
+            status_str,
+            member_str
+        )
 
     async def change_stage(self, stage_index, notify=True, inactivity_check=True, report_old=True):
         """
