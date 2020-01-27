@@ -98,6 +98,14 @@ async def cmd_set(ctx):
 
 @cmd("start")
 async def cmd_start(ctx):
+    """
+    Usage``:
+        start
+        start <setup string>
+    Description:
+        Start the timer you are subscribed to.
+        Can be used with a setup string to set up and start the timer in one go.
+    """
     timer = ctx.client.interface.get_timer_for(ctx.author.id)
     if timer is None:
         tchan = ctx.client.interface.channels.get(ctx.ch.id, None)
@@ -107,6 +115,14 @@ async def cmd_start(ctx):
             await ctx.error_reply("Please join a group first!")
         return
 
+    if ctx.arg_str:
+        stages = ctx.client.interface.parse_setupstr(ctx.arg_str)
+
+        if stages is None:
+            return await ctx.error_reply("Didn't understand setup string!")
+
+        timer.setup(stages)
+
     if not timer.stages:
         return await ctx.error_reply("Please set up the timer first!")
 
@@ -115,12 +131,12 @@ async def cmd_start(ctx):
 
 @cmd("groups",
      group="Timer",
-     desc="View or manage the guild's groups.")
+     desc="View the guild's groups.")
 async def cmd_groups(ctx):
     pass
 
 
-@cmd("group",
+@cmd("status",
      group="Timer",
      desc="View detailed information about a group.")
 async def cmd_group(ctx):
