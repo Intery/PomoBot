@@ -4,7 +4,7 @@ from cmdClient import cmd
 
 from Timer import TimerState
 
-from utils import timer
+from utils import timer, interactive, ctx_addons  # noqa
 
 
 @cmd("join",
@@ -77,6 +77,22 @@ async def cmd_unsub(ctx):
 
 @cmd("set")
 async def cmd_set(ctx):
+    """
+    Usage``:
+        set
+        set <setup string>
+    Description:
+        Setup the stages of the timer you are subscribed to.
+        When used with no parameters, uses the following default setup string:
+        ```
+        Study, 25, Good luck!; Break, 5, Have a rest.;
+        Study, 25, Good luck!; Break, 5, Have a rest.;
+        Study, 25, Good luck!; Long Break, 10, Have a rest.
+        ```
+        Stages are separated by semicolons,
+        and are of the format `stage name, stage duration, stage message`.
+        The `stage message` is optional.
+    """
     timer = ctx.client.interface.get_timer_for(ctx.author.id)
     if timer is None:
         tchan = ctx.client.interface.channels.get(ctx.ch.id, None)
@@ -85,8 +101,15 @@ async def cmd_set(ctx):
         else:
             await ctx.error_reply("Please join a group first!")
         return
+    if timer.state == TimerState.RUNNING:
+        if not await ctx.ask("The timer is running! Are you sure you want to reset it?"):
+            return
 
-    setupstr = ctx.arg_str or "Study, 25; Break, 5; Study, 25; Break, 5; Study, 25; Break, 10"
+    setupstr = ctx.arg_str or (
+        "Study, 25, Good luck!; Break, 5, Have a rest.;"
+        "Study, 25, Good luck!; Break, 5, Have a rest.;"
+        "Study, 25, Good luck!; Long Break, 10, Have a rest."
+    )
     stages = ctx.client.interface.parse_setupstr(setupstr)
 
     if stages is None:
@@ -114,6 +137,8 @@ async def cmd_start(ctx):
         else:
             await ctx.error_reply("Please join a group first!")
         return
+    if timer.state == TimerState.RUNNING:
+        return await ctx.error_reply("Your group timer is already running!")
 
     if ctx.arg_str:
         stages = ctx.client.interface.parse_setupstr(ctx.arg_str)
@@ -140,4 +165,21 @@ async def cmd_groups(ctx):
      group="Timer",
      desc="View detailed information about a group.")
 async def cmd_group(ctx):
-    pass
+    """
+    Usage``:
+        status [group]
+    Description:
+        Display detailed information about the current group or the specified group.
+    """
+    if ctx.arg_str:
+        timer = await ctx.get_timers_matching(ctx.arg_str, channel_only=False)
+        if timer is None:
+            return await ctx.error_reply("No groups matching `{}` in this channel!".format(ctx.arg_str))
+    else:
+        timer = ctx.client.interface.get_timer_for(ctx.author.id)
+        if timer is None:
+            timer = await ctx.get_timers_matching("", channel_only=False)
+            if timer is None:
+                return await ctx.error_reply("No groups are set up in this guild.")
+
+    await ctx.embedreply(timer.pretty_pinstatus())

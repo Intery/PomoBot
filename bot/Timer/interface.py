@@ -218,7 +218,7 @@ class TimerInterface(object):
 
     @staticmethod
     def parse_setupstr(setupstr):
-        stringy_stages = [stage.strip() for stage in setupstr.split(';')]
+        stringy_stages = [stage.strip() for stage in setupstr.strip(';').split(';')]
 
         stages = []
         for stringy_stage in stringy_stages:
