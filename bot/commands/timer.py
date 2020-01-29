@@ -60,6 +60,14 @@ async def cmd_join(ctx):
      desc="Leave your current group.",
      aliases=['unsub'])
 async def cmd_unsub(ctx):
+    """
+    Usage``:
+        leave
+    Description:
+        Leave your current group, and unsubscribe from the group timer.
+    Related:
+        join, status, groups
+    """
     timer = ctx.client.interface.get_timer_for(ctx.author.id)
     if timer is None:
         return await ctx.error_reply(
@@ -69,9 +77,16 @@ async def cmd_unsub(ctx):
     session = await ctx.client.interface.unsub(ctx.author.id)
     clocked = session[-1]
 
-    await ctx.reply("You have been unsubscribed from **{}**! You were subscribed for **{}** seconds.".format(
+    dur = int(clocked)
+    hours = dur // 3600
+    minutes = (dur % 3600) // 60
+    seconds = dur % 60
+
+    dur_str = "{:02d}:{:02d}:{:02d}".format(hours, minutes, seconds)
+
+    await ctx.reply("You have been unsubscribed from **{}**! You were subscribed for **{}**.".format(
         timer.name,
-        clocked
+        dur_str
     ))
 
 

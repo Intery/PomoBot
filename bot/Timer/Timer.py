@@ -39,7 +39,7 @@ class Timer(object):
         """
         Setup the timer with a list of TimerStages.
         """
-        self.state = TimerState.STOPPED
+        self.stop()
 
         self.stages = stages
         self.current_stage = 0
@@ -247,7 +247,7 @@ class Timer(object):
                          old_stage_str
                      )
                 )
-                self.state = TimerState.STOPPED
+                self.stop()
 
         for subber in unsubs:
             await subber.unsub()
@@ -264,6 +264,16 @@ class Timer(object):
         await self.change_stage(0, report_old=False)
         self.state = TimerState.RUNNING
         asyncio.ensure_future(self.runloop())
+
+    async def stop(self):
+        """
+        Stop the timer, and ensure the subscriber clocked times are updated.
+        """
+        for subber in self.subscribed:
+            subber.touch()
+            subber.active = False
+
+        self.state = TimerState.STOPPED
 
     async def runloop(self):
         while self.state == TimerState.RUNNING:
@@ -380,7 +390,7 @@ class TimerChannel(object):
                 except discord.Forbidden:
                     await self.channel.send("I require permission to send embeds in this channel! Stopping all timers.")
                     for timer in self.timers:
-                        timer.state = TimerState.STOPPED
+                        timer.stop()
 
                 # Pin the message
                 try:

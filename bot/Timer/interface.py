@@ -2,7 +2,7 @@ import asyncio
 import discord
 
 from .trackers import message_tracker, reaction_tracker
-from .Timer import Timer, TimerState, TimerChannel, TimerSubscriber, TimerStage
+from .Timer import Timer, TimerChannel, TimerSubscriber, TimerStage
 from .registry import TimerRegistry
 
 
@@ -139,7 +139,7 @@ class TimerInterface(object):
             asyncio.ensure_future(sub.unsub())
 
         # Stop the timer
-        timer.state = TimerState.STOPPED
+        timer.stop()
 
         # Remove the timer from its channel
         tchan = self.channels.get(timer.channel.id, None)
