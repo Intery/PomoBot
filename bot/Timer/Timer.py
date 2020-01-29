@@ -159,6 +159,29 @@ class Timer(object):
             member_str
         )
 
+    def oneline_summary(self):
+        """
+        Return a one line summary status message
+        """
+        if self.state == TimerState.RUNNING:
+            status = "Running"
+        elif self.state == TimerState.PAUSED:
+            status = "Paused"
+        elif self.state == TimerState.STOPPED:
+            status = "Stopped"
+
+        if self.stages:
+            stage_str = "/".join(str(stage.duration) for i, stage in enumerate(self.stages))
+        else:
+            stage_str = "not set up"
+
+        return "{name}  ({status} with {members} members, {setup}.)".format(
+            name=self.name,
+            status=status,
+            members=len(self.subscribed) if self.subscribed else 'no',
+            setup=stage_str
+        )
+
     async def change_stage(self, stage_index, notify=True, inactivity_check=True, report_old=True):
         """
         Advance the timer to the new stage.
@@ -394,7 +417,7 @@ class TimerSubscriber(object):
 
         self.last_updated = now
         self.clocked_time = 0
-        self.active = True
+        self.active = (timer.state == TimerState.RUNNING)
 
         self.last_seen = now
         self.warnings = 0

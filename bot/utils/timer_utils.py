@@ -3,7 +3,7 @@ from cmdClient.lib import UserCancelled, ResponseTimedOut
 
 
 @Context.util
-async def get_timers_matching(ctx, name_str, channel_only=True):
+async def get_timers_matching(ctx, name_str, channel_only=True, info=False):
     """
     Interactively get a guild timer matching the given string.
 
@@ -13,6 +13,8 @@ async def get_timers_matching(ctx, name_str, channel_only=True):
         Name or partial name of a group timer in the current guild or channel.
     channel_only: bool
         Whether to match against the groups in the current channel or those in the whole guild.
+    info: bool
+        Whether to display some summary info about the timer in the selector.
 
     Returns: Timer
 
@@ -42,9 +44,13 @@ async def get_timers_matching(ctx, name_str, channel_only=True):
     elif len(timers) == 1:
         return timers[0]
     else:
-        names = [timer.name for timer in timers]
+        if info:
+            select_from = [timer.oneline_summary() for timer in timers]
+        else:
+            select_from = [timer.name for timer in timers]
+
         try:
-            selected = await ctx.selector("Multiple matching groups found, please select one.", names)
+            selected = await ctx.selector("Multiple matching groups found, please select one.", select_from)
         except ResponseTimedOut:
             raise ResponseTimedOut("Group selection timed out.") from None
         except UserCancelled:

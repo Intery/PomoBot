@@ -4,7 +4,7 @@ from cmdClient import cmd
 
 from Timer import TimerState
 
-from utils import timer, interactive, ctx_addons  # noqa
+from utils import timer_utils, interactive, ctx_addons  # noqa
 
 
 @cmd("join",
@@ -31,7 +31,7 @@ async def cmd_join(ctx):
         )
 
     # Get the timer they want to join
-    timer = await ctx.get_timers_matching(ctx.arg_str)
+    timer = await ctx.get_timers_matching(ctx.arg_str, info=True)
 
     if timer is None:
         return await ctx.error_reply(

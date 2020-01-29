@@ -5,7 +5,7 @@ from cmdClient.lib import ResponseTimedOut, UserCancelled
 from cmdClient.checks import in_guild
 
 from wards import timer_admin
-from utils import seekers, ctx_addons, timer  # noqa
+from utils import seekers, ctx_addons, timer_utils  # noqa
 # from Timer import create_timer
 
 
