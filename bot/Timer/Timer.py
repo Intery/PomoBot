@@ -265,11 +265,11 @@ class Timer(object):
         self.state = TimerState.RUNNING
         asyncio.ensure_future(self.runloop())
 
-    async def stop(self):
+    def stop(self):
         """
         Stop the timer, and ensure the subscriber clocked times are updated.
         """
-        for subber in self.subscribed:
+        for subber in self.subscribed.values():
             subber.touch()
             subber.active = False
 

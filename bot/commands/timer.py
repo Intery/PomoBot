@@ -90,7 +90,10 @@ async def cmd_unsub(ctx):
     ))
 
 
-@cmd("set")
+@cmd("set",
+     group="Timer",
+     desc="Setup the stages of a group timer.",
+     aliases=['setup', 'reset'])
 async def cmd_set(ctx):
     """
     Usage``:
@@ -107,6 +110,8 @@ async def cmd_set(ctx):
         Stages are separated by semicolons,
         and are of the format `stage name, stage duration, stage message`.
         The `stage message` is optional.
+    Related:
+        join, start
     """
     timer = ctx.client.interface.get_timer_for(ctx.author.id)
     if timer is None:
@@ -134,7 +139,9 @@ async def cmd_set(ctx):
     await ctx.reply("Timer pattern set up! Start when ready.")
 
 
-@cmd("start")
+@cmd("start",
+     group="Timer",
+     desc="Start your timer.")
 async def cmd_start(ctx):
     """
     Usage``:
@@ -167,6 +174,31 @@ async def cmd_start(ctx):
         return await ctx.error_reply("Please set up the timer first!")
 
     await timer.start()
+
+
+@cmd("stop",
+     group="Timer",
+     desc="Stop your timer.")
+async def cmd_stop(ctx):
+    """
+    Usage``:
+        stop
+    Description:
+        Stop the timer you are subscribed to.
+    """
+    timer = ctx.client.interface.get_timer_for(ctx.author.id)
+    if timer is None:
+        tchan = ctx.client.interface.channels.get(ctx.ch.id, None)
+        if tchan is None or not tchan.timers:
+            await ctx.error_reply("There are no timers in this channel!")
+        else:
+            await ctx.error_reply("Please join a group first!")
+        return
+    if timer.state == TimerState.STOPPED:
+        return await ctx.error_reply("Can't stop something that's not moving!")
+
+    timer.stop()
+    await ctx.reply("Your timer has been stopped.")
 
 
 @cmd("groups",
