@@ -197,7 +197,7 @@ async def cmd_lb(ctx):
             user_str = user.name
 
         if userid in ctx.client.interface.subscribers:
-            total += ctx.client.interface.subscribers[userid].session_data[4]
+            total += ctx.client.interface.subscribers[userid].session_data()[4]
 
         total_strs.append((user_str, _parse_duration(total)))
 
