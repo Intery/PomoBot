@@ -144,11 +144,13 @@ async def cmd_lb(ctx):
         week: Show totals of sessions within the last 7 days
         month: Show totals of sessions within the last 31 days
     """
+    out_msg = await ctx.reply("Generating leaderboard, please wait.")
+
     # Get the past sessions for this guild
     sessions = ctx.client.interface.registry.get_sessions_where(guildid=ctx.guild.id)
 
     if not sessions:
-        await ctx.reply("This guild has no past group sessions! Please check back soon.")
+        return await ctx.reply("This guild has no past group sessions! Please check back soon.")
 
     # Current utc timestamp
     now = Timer.now()
@@ -191,6 +193,7 @@ async def cmd_lb(ctx):
         if user is None:
             try:
                 user = await ctx.client.fetch_user(userid)
+                user_str = user.name
             except discord.NotFound:
                 user_str = str(userid)
         else:
@@ -204,13 +207,13 @@ async def cmd_lb(ctx):
     # Build pages in groups of 20
     blocks = [total_strs[i:i+20] for i in range(0, len(total_strs), 20)]
     max_block_lens = [len(max(list(zip(*block))[0], key=len)) for block in blocks]
-    page_blocks = [["{0[0]:^{max_len}} {0[1]:^8}".format(pair, max_len=max_block_lens[i]) for pair in block]
+    page_blocks = [["{0[0]:^{max_len}} {0[1]:>10}".format(pair, max_len=max_block_lens[i]) for pair in block]
                    for i, block in enumerate(blocks)]
 
     num = len(page_blocks)
     pages = []
     for i, block in enumerate(page_blocks):
-        header = head + " (Page {}/{})".format(i, num) if num > 1 else head
+        header = head + " (Page {}/{})".format(i+1, num) if num > 1 else head
         header_rule = "=" * len(header)
         page = "```md\n{}\n{}\n{}```".format(
             header,
@@ -219,4 +222,5 @@ async def cmd_lb(ctx):
         )
         pages.append(page)
 
+    await out_msg.delete()
     await ctx.pager(pages, locked=False)
