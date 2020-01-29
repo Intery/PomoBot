@@ -65,4 +65,4 @@ def timestamp_utcnow():
     """
     Return the current integer UTC timestamp.
     """
-    return datetime.datetime.timestamp(datetime.datetime.utcnow())
+    return int(datetime.datetime.timestamp(datetime.datetime.utcnow()))
