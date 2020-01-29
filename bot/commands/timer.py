@@ -224,7 +224,7 @@ async def cmd_groups(ctx):
 @cmd("status",
      group="Timer",
      desc="View detailed information about a group.",
-     aliases=["group"])
+     aliases=["group", "timer"])
 async def cmd_group(ctx):
     """
     Usage``:
