@@ -1,4 +1,3 @@
-import time
 import asyncio
 import datetime
 import discord
@@ -45,10 +44,11 @@ class Timer(object):
         self.stages = stages
         self.current_stage = 0
 
-        self.start_time = int(time.time())
+        now = self.now()
+        self.start_time = now
 
         self.remaining = stages[0].duration
-        self.current_stage_start = int(time.time())
+        self.current_stage_start = now
 
         # Return self for method chaining
         return self
@@ -62,7 +62,7 @@ class Timer(object):
             return
 
         # Quit if we aren't due for a clock update yet
-        if int(time.time()) - self.last_clockupdate < self.clock_period:
+        if self.now() - self.last_clockupdate < self.clock_period:
             return
 
         # Get the name and time strings
@@ -74,7 +74,7 @@ class Timer(object):
             await self.clock_channel.edit(name="{} - {}".format(stage_name, remaining_time))
         except Exception:
             pass
-        self.last_clockupdate = int(time.time())
+        self.last_clockupdate = self.now()
 
     def pretty_remaining(self):
         """
@@ -175,7 +175,7 @@ class Timer(object):
             if inactivity_check:
                 if subber.warnings >= self.max_warning:
                     unsubs.append(subber)
-                elif (time.time() - subber.last_seen) > current_stage.duration * 60:
+                elif (self.now() - subber.last_seen) > current_stage.duration * 60:
                     subber.warnings += 1
                     if subber.warnings >= self.max_warning:
                         needs_warning.append(subber)
@@ -230,7 +230,7 @@ class Timer(object):
             await subber.unsub()
 
         self.current_stage = stage_index
-        self.current_stage_start = int(time.time())
+        self.current_stage_start = self.now()
         self.remaining = self.stages[stage_index].duration * 60
         pass
 
@@ -244,12 +244,19 @@ class Timer(object):
 
     async def runloop(self):
         while self.state == TimerState.RUNNING:
-            self.remaining = int(60*self.stages[self.current_stage].duration - (time.time() - self.current_stage_start))
+            self.remaining = int(60*self.stages[self.current_stage].duration - (self.now() - self.current_stage_start))
             if self.remaining <= 0:
                 await self.change_stage(self.current_stage + 1)
 
             await self.update_clock_channel()
             await asyncio.sleep(1)
+
+    @staticmethod
+    def now():
+        """
+        Helper to get the current ITC timestamp as an integer.
+        """
+        return datetime.datetime.timestamp(datetime.datetime.utcnow())
 
 
 class TimerState(Enum):
@@ -325,7 +332,7 @@ class TimerChannel(object):
             embed = discord.Embed(
                 title="Pomodoro Timer Status",
                 description=desc,
-                timestamp=datetime.datetime.now()
+                timestamp=datetime.datetime.utcnow()
             )
             if self.msg is not None:
                 try:
@@ -382,7 +389,7 @@ class TimerSubscriber(object):
         self.client = interface.client
         self.id = member.id
 
-        now = int(time.time())
+        now = Timer.now()
         self.time_joined = now
 
         self.last_updated = now
@@ -396,14 +403,14 @@ class TimerSubscriber(object):
         await self.interface.unsub(self.id)
 
     def bump(self):
-        self.last_seen = int(time.time())
+        self.last_seen = Timer.now()
         self.warnings = 0
 
     def touch(self):
         """
         Update the clocked time based on the active status.
         """
-        now = int(time.time())
+        now = Timer.now()
         self.clocked_time += (now - self.last_updated) if self.active else 0
         self.last_updated = now
 
