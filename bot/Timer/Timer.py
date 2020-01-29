@@ -254,9 +254,9 @@ class Timer(object):
     @staticmethod
     def now():
         """
-        Helper to get the current ITC timestamp as an integer.
+        Helper to get the current UTC timestamp as an integer.
         """
-        return datetime.datetime.timestamp(datetime.datetime.utcnow())
+        return int(datetime.datetime.timestamp(datetime.datetime.utcnow()))
 
 
 class TimerState(Enum):

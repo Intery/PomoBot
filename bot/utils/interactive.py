@@ -175,8 +175,8 @@ async def _pager(ctx, out_msg, pages, locked):
     prev_emoji = "◀"
 
     try:
-        await out_msg.add_reaction(out_msg, prev_emoji)
-        await out_msg.add_reaction(out_msg, next_emoji)
+        await out_msg.add_reaction(prev_emoji)
+        await out_msg.add_reaction( next_emoji)
     except discord.Forbidden:
         # We don't have permission to add paging emojis
         # Die as gracefully as we can
@@ -195,7 +195,7 @@ async def _pager(ctx, out_msg, pages, locked):
     while True:
         # Wait for a valid reaction, break if we time out
         try:
-            reaction, user = await ctx.bot.wait_for('reaction_add', check=check, timeout=300)
+            reaction, user = await ctx.client.wait_for('reaction_add', check=check, timeout=300)
         except asyncio.TimeoutError:
             break
 

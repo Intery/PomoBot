@@ -1,3 +1,6 @@
+import datetime
+
+
 def prop_tabulate(prop_list, value_list):
     """
     Turns a list of properties and corresponding list of values into
@@ -56,3 +59,10 @@ def paginate_list(item_list, block_length=20, style="markdown", title=None):
         full_header = "{}\n{}\n".format(header, header_line) if len(page_blocks) > 1 or title else ""
         pages.append("```{}\n{}{}```".format(style, full_header, "\n".join(block)))
     return pages
+
+
+def timestamp_utcnow():
+    """
+    Return the current integer UTC timestamp.
+    """
+    return datetime.datetime.timestamp(datetime.datetime.utcnow())
