@@ -1,9 +1,12 @@
 import datetime as dt
+import discord
 
 from cmdClient import cmd
 from cmdClient import checks
 
 from utils import interactive # noqa
+
+from Timer import Timer
 
 
 @cmd("history",
@@ -121,3 +124,99 @@ def _parse_duration(dur):
     seconds = dur % 60
 
     return "{:02d}:{:02d}:{:02d}".format(hours, minutes, seconds)
+
+
+@cmd("leaderboard",
+     group="Registry",
+     desc="Display total member group time in the last day/week/month or all-time.",
+     aliases=['lb'])
+@checks.in_guild()
+async def cmd_lb(ctx):
+    """
+    Usage``:
+        lb [day | week | month]
+    Description:
+        Display the total timer time of each guild member, within the specified period.
+        The periods are rolling, i.e. `day` means the last 24h.
+        Without a period specified, the all-time totals will be shown.
+    Parameters::
+        day: Show totals of sessions within the last 24 hours
+        week: Show totals of sessions within the last 7 days
+        month: Show totals of sessions within the last 31 days
+    """
+    # Get the past sessions for this guild
+    sessions = ctx.client.interface.registry.get_sessions_where(guildid=ctx.guild.id)
+
+    if not sessions:
+        await ctx.reply("This guild has no past group sessions! Please check back soon.")
+
+    # Current utc timestamp
+    now = Timer.now()
+
+    # Determine maximum time separation allowed for sessions
+    region = ctx.arg_str.lower().strip()
+    if not region or region == 'all':
+        max_dist = now
+        head = "All-time leaderboard"
+    elif region == 'day':
+        max_dist = 60 * 60 * 24
+        head = "Daily leaderboard"
+    elif region == 'week':
+        max_dist = 60 * 60 * 24 * 7
+        head = "Weekly leaderboard"
+    elif region == 'month':
+        max_dist = 60 * 60 * 24 * 31
+        head = "Monthly leaderboard"
+    else:
+        return await ctx.error_reply("Unknown region specification `{}`.".format(ctx.arg_str))
+
+    # Tally total session times
+    total_dict = {}
+    for session in sessions:
+        if now - session['starttime'] > max_dist:
+            continue
+
+        if session['userid'] not in total_dict:
+            total_dict[session['userid']] = 0
+        total_dict[session['userid']] += session['duration']
+
+    # Reshape and sort the totals
+    totals = sorted(list(total_dict.items()), key=lambda tup: tup[1], reverse=True)
+
+    # Build the string pairs
+    total_strs = []
+    for userid, total in totals:
+        # Find the user
+        user = ctx.client.get_user(userid)
+        if user is None:
+            try:
+                user = await ctx.client.fetch_user(userid)
+            except discord.NotFound:
+                user_str = str(userid)
+        else:
+            user_str = user.name
+
+        if userid in ctx.client.interface.subscribers:
+            total += ctx.client.interface.subscribers[userid].session_data[4]
+
+        total_strs.append((user_str, _parse_duration(total)))
+
+    # Build pages in groups of 20
+    blocks = [total_strs[i:i+20] for i in range(0, len(total_strs), 20)]
+    max_block_lens = [len(max(list(zip(*block))[0], key=len)) for block in blocks]
+    page_blocks = [["{0[0]:^{max_len}} {0[1]:^8}".format(pair, max_len=max_block_lens[i]) for pair in block]
+                   for i, block in enumerate(blocks)]
+
+    num = len(page_blocks)
+    pages = []
+    for i, block in enumerate(page_blocks):
+        header = head + " (Page {}/{})".format(i, num) if num > 1 else head
+        header_rule = "=" * len(header)
+        page = "```md\n{}\n{}\n{}```".format(
+            header,
+            header_rule,
+            "\n".join(block)
+        )
+        pages.append(page)
+
+    await ctx.pager(pages, locked=False)
