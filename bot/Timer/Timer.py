@@ -263,6 +263,9 @@ class Timer(object):
         """
         await self.change_stage(0, report_old=False)
         self.state = TimerState.RUNNING
+        for subber in self.subscribed.values():
+            subber.touch()
+            subber.active = True
         asyncio.ensure_future(self.runloop())
 
     def stop(self):
