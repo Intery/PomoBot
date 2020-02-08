@@ -346,6 +346,37 @@ class Timer(object):
 
         return "{:02d}:{:02d}:{:02d}".format(hours, minutes, seconds)
 
+    def serialise(self):
+        """
+        Serialise current timer status to a dictionary.
+        Does not serialise subscribers or fixed attributes such as channels.
+        """
+        return {
+            'roleid': self.role.id,
+            'name': self.name,
+            'start_time': self.start_time,
+            'current_stage_start': self.current_stage_start,
+            'remaining': self.remaining,
+            'state': self.state.value,
+            'stages': [stage.serialise() for stage in self.stages] if self.stages else None,
+            'current_stage': self.current_stage
+        }
+
+    def update_from_data(self, data):
+        """
+        Restore timer status from the provided status dict, as produced by `serialise`.
+        """
+        self.name = data['name']
+        self.start_time = data['start_time']
+        self.current_stage_start = data['current_stage_start']
+        self.remaining = data['remaining']
+        self.state = TimerState(data['state'])
+        self.stages = [TimerStage.deserialise(stage_data) for stage_data in data['stages']] if data['stages'] else None
+        self.current_stage = data['current_stage']
+
+        asyncio.ensure_future(self.runloop())
+        return self
+
 
 class TimerState(Enum):
     """
@@ -387,6 +418,31 @@ class TimerStage(object):
 
         self.modifiers = modifiers
 
+    def serialise(self):
+        """
+        Serialise stage to a serialisable dictionary.
+        """
+        return {
+            'name': self.name,
+            'duration': self.duration,
+            'message': self.message,
+            'focus': self.focus,
+            'modifiers': self.modifiers
+        }
+
+    @classmethod
+    def deserialise(cls, data_dict):
+        """
+        Deserialise stage from a dictionary formatted like the output of `serialise.
+        """
+        return cls(
+            data_dict['name'],
+            data_dict['duration'],
+            message=data_dict['message'],
+            focus=data_dict['focus'],
+            **data_dict['modifiers']
+        )
+
 
 class TimerChannel(object):
     """
@@ -425,6 +481,10 @@ class TimerChannel(object):
             if self.msg is not None:
                 try:
                     await self.msg.edit(embed=embed)
+                except discord.NotFound:
+                    self.msg = None
+                except discord.Forbidden:
+                    pass
                 except Exception:
                     pass
 
@@ -553,25 +613,29 @@ class TimerSubscriber(object):
         )
 
     def serialise(self):
-        return (
-            self.id,
-            self.member.guild.id,
-            self.timer.role.id,
-            self.time_joined,
-            self.last_updated,
-            self.time_subbed,
-            self.last_seen,
-            self.warnings
-        )
+        return {
+            'id': self.id,
+            'guildid': self.member.guild.id,
+            'roleid': self.timer.role.id,
+            'notify': self.notify.value,
+            'time_joined': self.time_joined,
+            'last_updated': self.last_updated,
+            'clocked_time': self.clocked_time,
+            'active': self.active,
+            'last_seen': self.last_seen,
+            'warnings': self.warnings
+        }
 
     @classmethod
     def deserialise(cls, member, timer, interface, data):
         self = cls(member, timer, interface)
 
-        self.time_joined = data[3]
-        self.last_updated = data[4]
-        self.time_subbed = data[5]
-        self.last_seen = data[6]
-        self.warnings = data[7]
+        self.time_joined = data['time_joined']
+        self.last_updated = data['last_updated']
+        self.clocked_time = data['clocked_time']
+        self.active = data['active']
+        self.notify = NotifyLevel(data['notify'])
+        self.last_seen = data['last_seen']
+        self.warnings = data['warnings']
 
         return self

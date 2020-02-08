@@ -1,5 +1,12 @@
+import os
+import traceback
+import logging
+import json
 import asyncio
+
 import discord
+
+from logger import log
 
 from .trackers import message_tracker, reaction_tracker
 from .Timer import Timer, TimerChannel, TimerSubscriber, TimerStage, NotifyLevel
@@ -8,6 +15,7 @@ from .registry import TimerRegistry
 
 class TimerInterface(object):
     save_interval = 120
+    save_fp = "data/timerstatus.json"
 
     def __init__(self, client, db_filename):
         self.client = client
@@ -44,7 +52,7 @@ class TimerInterface(object):
             return
 
         self.load_timers()
-        self.restore_save()
+        await self.restore_save()
 
         self.ready = True
         asyncio.ensure_future(self.updateloop())
@@ -53,6 +61,10 @@ class TimerInterface(object):
         while True:
             for tchan in self.channels.values():
                 asyncio.ensure_future(tchan.update())
+
+            if Timer.now() - self.last_save > self.save_interval:
+                self.update_save()
+
             await asyncio.sleep(2)
 
     def load_timers(self):
@@ -99,11 +111,81 @@ class TimerInterface(object):
             # Assign the channels to the guild
             self.guild_channels[guildid] = channels
 
-    def restore_save(self):
-        pass
+    async def restore_save(self):
+        # Open save file if it exists
+        if not os.path.exists(self.save_fp):
+            return
+
+        with open(self.save_fp) as f:
+            try:
+                savedata = json.load(f)
+            except Exception:
+                log("Caught the following exception loading the temporary savefile\n{}".format(traceback.format_exc()),
+                    context="TIMER_RESTORE",
+                    level=logging.ERROR)
+                os.rename(self.save_fp, self.save_fp + '_CORRUPTED')
+                return
+
+        if savedata:
+            # Create a roleid: timer map
+            timers = {timer.role.id: timer for channel in self.channels.values() for timer in channel.timers}
+
+            for timer in savedata['timers']:
+                if timer['roleid'] in timers:
+                    timers[timer['roleid']].update_from_data(timer)
+                    log("Restored timer {} (roleid {}) from save.".format(timer['name'], timer['roleid']),
+                        context="TIMER_RESTORE")
+
+            for sub_data in savedata['subscribers']:
+                if sub_data['roleid'] in timers:
+                    timer = timers[sub_data['roleid']]
+
+                    guild = self.client.get_guild(sub_data['guildid'])
+                    if guild is None:
+                        continue
+
+                    member = guild.get_member(sub_data['id'])
+                    if member is None:
+                        continue
+
+                    subber = TimerSubscriber.deserialise(member, timer, self, sub_data)
+                    self.subscribers[member.id] = subber
+                    timer.subscribed[member.id] = subber
+
+                    log("Restored subscriber {} (id {}) in timer {} (roleid {}) from save.".format(member.name,
+                                                                                                   member.id,
+                                                                                                   timer.name,
+                                                                                                   timer.role.id),
+                        context="TIMER_RESTORE")
+
+            for tchan_data in savedata['timer_channels']:
+                if tchan_data['id'] in self.channels:
+                    tchan = self.channels[tchan_data['id']]
+                    try:
+                        tchan.msg = await tchan.channel.fetch_message(tchan_data['msgid'])
+                    except discord.NotFound:
+                        continue
+                    except discord.Forbidden:
+                        continue
 
     def update_save(self):
-        pass
+        # Generate save dict
+        timers = [timer for channel in self.channels.values() for timer in channel.timers]
+        timer_data = [timer.serialise() for timer in timers if timer.stages]
+        sub_data = [subber.serialise() for subber in self.subscribers.values()]
+        tchan_data = [{'id': tchan.channel.id, 'msgid': tchan.msg.id} for tchan in self.channels.values() if tchan.msg]
+
+        data = {
+            'timers': timer_data,
+            'subscribers': sub_data,
+            'timer_channels': tchan_data
+        }
+        data_str = json.dumps(data)
+
+        with open(self.save_fp, 'w') as f:
+            f.write(data_str)
+
+        self.last_save = Timer.now()
 
     def create_timer(self, group_name, group_role, bound_channel, clock_channel):
         guild = group_role.guild
