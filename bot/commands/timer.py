@@ -319,3 +319,31 @@ async def cmd_notify(ctx):
 
             # Send the update message
             await ctx.reply(message)
+
+
+@cmd("rename",
+     group="Timer",
+     desc="Rename your group.")
+async def cmd_rename(ctx):
+    """
+    Usage``:
+        rename <groupname>
+    Description:
+        Set the name of your current group to `groupname`.
+    Arguments::
+        groupname: The new name for your group, less than `20` charachters long.
+    Related:
+        join, status, groups
+    """
+    timer = ctx.client.interface.get_timer_for(ctx.author.id)
+    if timer is None:
+        return await ctx.error_reply(
+            "You need to join a group first!"
+        )
+    if not (0 < len(ctx.arg_str) < 20):
+        return await ctx.error_reply(
+            "Please supply a new group name under `20` characters long!\n"
+            "**Usage:** `rename <groupname>`"
+        )
+    timer.name = ctx.arg_str
+    await ctx.embedreply("Your group has been renamed to **{}**.".format(ctx.arg_str))
