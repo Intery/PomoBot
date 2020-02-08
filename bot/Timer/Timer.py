@@ -458,7 +458,7 @@ class TimerChannel(object):
         A valid and current discord Message in the channel.
         Holds the updating timer status messages.
     """
-    __slots__ = ('channel', 'timers', 'msg')
+    __slots__ = ('channel', 'timers', 'msg', 'old_desc')
 
     def __init__(self, channel):
         self.channel = channel
