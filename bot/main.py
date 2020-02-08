@@ -18,6 +18,7 @@ config = BotData(app="pomo", data_file="data/config_data.db")
 # Initialise the client
 client = cmdClient(prefix=conf['prefix'], owners=masters)
 client.config = config
+client.log = log
 
 # Load the commands
 client.load_dir(os.path.join(__location__, 'commands'))

@@ -18,6 +18,17 @@ Commands provided:
 """
 
 
+@cmd("restart")
+@checks.is_owner()
+async def cmd_shutdown(ctx):
+    """
+    Usage``:
+        shutdown
+    """
+    ctx.client.interface.update_save()
+    await ctx.client.logout()
+
+
 @cmd("async")
 @checks.is_owner()
 async def cmd_async(ctx):
