@@ -80,13 +80,7 @@ class Timer(object):
         """
         Return a formatted version of the time remaining until the next stage.
         """
-        diff = self.remaining
-        diff = max(diff, 0)
-        hours = diff // 3600
-        minutes = (diff % 3600) // 60
-        seconds = diff % 60
-
-        return "{:02d}:{:02d}:{:02d}".format(hours, minutes, seconds)
+        return self.parse_dur(self.remaining)
 
     def pretty_pinstatus(self):
         """
@@ -210,7 +204,8 @@ class Timer(object):
         if notify:
             old_stage_str = "**{}** finished! ".format(current_stage.name) if report_old else ""
             if needs_warning:
-                warning_str = "{} you will be unsubscribed on the next stage if you do not react.\n".format(
+                warning_str = ("{} you will be unsubscribed on the next stage "
+                               "if you do not reply or react to this message.\n").format(
                     ", ".join(subber.member.mention for subber in needs_warning)
                 )
             else:
@@ -222,15 +217,19 @@ class Timer(object):
             else:
                 unsub_str = ""
 
+            main_line = "{}Starting **{}** ({} minutes). {}".format(
+                old_stage_str,
+                new_stage.name,
+                new_stage.duration,
+                new_stage.message
+            )
+
             if not empty:
                 out_msg = await self.channel.send(
-                    ("{}\n{}Starting **{}** ({} minutes). {}\n"
-                     "Please react to this message to register your presence!\n{}{}").format(
+                    ("{}\n{}\n"
+                     "Please reply or react to this message to register your existence.\n{}{}").format(
                          self.role.mention,
-                         old_stage_str,
-                         new_stage.name,
-                         new_stage.duration,
-                         new_stage.message,
+                         main_line,
                          warning_str,
                          unsub_str
                      )
@@ -249,13 +248,49 @@ class Timer(object):
                 )
                 self.stop()
 
-        for subber in unsubs:
+            # Notify the subscribers as desired
+            for subber in self.subscribed.values():
+                try:
+                    out_msg = None
+                    if subber in unsubs and subber.notify >= NotifyLevel.FINAL:
+                        await subber.member.send(
+                            "You have been unsubscribed from group **{}** in {} due to inactivity!".format(
+                                self.name,
+                                self.channel.mention
+                            )
+                        )
+                    elif subber in needs_warning and subber.notify >= NotifyLevel.WARNING:
+                        out_msg = await subber.member.send(
+                            ("**Warning** from group **{}** in {}!\n"
+                             "Please respond or react to a timer message "
+                             "to avoid being unsubscribed on the next stage.\n{}").format(
+                                 self.name,
+                                 self.channel.mention,
+                                 main_line
+                             )
+                        )
+                    elif subber.notify >= NotifyLevel.ALL:
+                        out_msg = await subber.member.send(
+                            "Status update for group **{}** in {}!\n{}".format(self.name,
+                                                                               self.channel.mention,
+                                                                               main_line)
+                        )
+                    if out_msg is not None:
+                        try:
+                            await out_msg.add_reaction("✅")
+                        except Exception:
+                            pass
+                except discord.Forbidden:
+                    pass
+                except discord.HTTPException:
+                    pass
+
+        if subber in unsubs:
             await subber.unsub()
 
         self.current_stage = stage_index
         self.current_stage_start = self.now()
         self.remaining = self.stages[stage_index].duration * 60
-        pass
 
     async def start(self):
         """
@@ -266,6 +301,7 @@ class Timer(object):
         for subber in self.subscribed.values():
             subber.touch()
             subber.active = True
+
         asyncio.ensure_future(self.runloop())
 
     def stop(self):
@@ -282,7 +318,10 @@ class Timer(object):
         while self.state == TimerState.RUNNING:
             self.remaining = int(60*self.stages[self.current_stage].duration - (self.now() - self.current_stage_start))
             if self.remaining <= 0:
-                await self.change_stage(self.current_stage + 1)
+                try:
+                    await self.change_stage(self.current_stage + 1)
+                except Exception:
+                    pass
 
             await self.update_clock_channel()
             await asyncio.sleep(1)
@@ -293,6 +332,18 @@ class Timer(object):
         Helper to get the current UTC timestamp as an integer.
         """
         return int(datetime.datetime.timestamp(datetime.datetime.utcnow()))
+
+    @staticmethod
+    def parse_dur(diff):
+        """
+        Parse a duration given in seconds to a time string.
+        """
+        diff = max(diff, 0)
+        hours = diff // 3600
+        minutes = (diff % 3600) // 60
+        seconds = diff % 60
+
+        return "{:02d}:{:02d}:{:02d}".format(hours, minutes, seconds)
 
 
 class TimerState(Enum):
@@ -402,11 +453,46 @@ class TimerChannel(object):
                     pass
 
 
+class NotifyLevel(Enum):
+    """
+    Enum representing a subscriber's notification level.
+    NONE: Never send direct messages.
+    FINAL: Send a direct message when kicking for inactivity.
+    WARNING: Send direct messages for unsubscription warnings.
+    ALL: Send direct messages for all stage updates.
+    """
+    NONE = 1
+    FINAL = 2
+    WARNING = 3
+    ALL = 4
+
+    def __ge__(self, other):
+        if self.__class__ is other.__class__:
+            return self.value >= other.value
+        return NotImplemented
+
+    def __gt__(self, other):
+        if self.__class__ is other.__class__:
+            return self.value > other.value
+        return NotImplemented
+
+    def __le__(self, other):
+        if self.__class__ is other.__class__:
+            return self.value <= other.value
+        return NotImplemented
+
+    def __lt__(self, other):
+        if self.__class__ is other.__class__:
+            return self.value < other.value
+        return NotImplemented
+
+
 class TimerSubscriber(object):
     __slots__ = (
         'member',
         'timer',
         'interface',
+        'notify',
         'client',
         'id',
         'time_joined',
@@ -417,10 +503,11 @@ class TimerSubscriber(object):
         'warnings'
     )
 
-    def __init__(self, member, timer, interface):
+    def __init__(self, member, timer, interface, notify=NotifyLevel.WARNING):
         self.member = member
         self.timer = timer
         self.interface = interface
+        self.notify = notify
 
         self.client = interface.client
         self.id = member.id
@@ -436,7 +523,7 @@ class TimerSubscriber(object):
         self.warnings = 0
 
     async def unsub(self):
-        await self.interface.unsub(self.id)
+        return await self.interface.unsub(self.id)
 
     def bump(self):
         self.last_seen = Timer.now()

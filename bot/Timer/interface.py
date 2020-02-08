@@ -2,7 +2,7 @@ import asyncio
 import discord
 
 from .trackers import message_tracker, reaction_tracker
-from .Timer import Timer, TimerChannel, TimerSubscriber, TimerStage
+from .Timer import Timer, TimerChannel, TimerSubscriber, TimerStage, NotifyLevel
 from .registry import TimerRegistry
 
 
@@ -180,8 +180,12 @@ class TimerInterface(object):
                 subber.bump()
 
     async def sub(self, ctx, member, timer):
+        # Get the notify level
+        notify = ctx.client.config.users.get(member.id, "notify_level")
+        notify = NotifyLevel(notify) if notify is not None else NotifyLevel.WARNING
+
         # Create the subscriber
-        subber = TimerSubscriber(member, timer, self)
+        subber = TimerSubscriber(member, timer, self, notify=notify)
 
         # Attempt to add the sub role
         try:

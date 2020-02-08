@@ -2,7 +2,7 @@
 # import discord
 from cmdClient import cmd
 
-from Timer import TimerState
+from Timer import TimerState, NotifyLevel
 
 from utils import timer_utils, interactive, ctx_addons  # noqa
 
@@ -244,3 +244,78 @@ async def cmd_group(ctx):
                 return await ctx.error_reply("No groups are set up in this guild.")
 
     await ctx.embedreply(timer.pretty_pinstatus())
+
+
+@cmd("notify",
+     group="Timer",
+     desc="Configure your personal notification level.",
+     aliases=["dm"])
+async def cmd_notify(ctx):
+    """
+    Usage``:
+        notify
+        notify <level>
+    Description:
+        View or set your notification level.
+        The possible levels are described below.
+    Notification levels::
+        all: Receive all stage changes and status updates via DM.
+        warnings: Only receive a DM for inactivity warnings (default).
+        kick: Only receive a DM after being kicked for inactivity.
+        none: Never get sent any status updates via DM.
+    Examples``:
+        notify warnings
+    """
+    if not ctx.arg_str:
+        # Read the current level and report
+        level = ctx.client.config.users.get(ctx.author.id, "notify_level") or None
+        level = NotifyLevel(level) if level is not None else NotifyLevel.WARNING
+
+        if level == NotifyLevel.ALL:
+            await ctx.reply("Your notification level is `ALL`.\n"
+                            "You will be notified of all group status changes by direct message.")
+        elif level == NotifyLevel.WARNING:
+            await ctx.reply("Your notification level is `WARNING`.\n"
+                            "You will receive a direct message when you are about to be kicked for inactivity.")
+        elif level == NotifyLevel.FINAL:
+            await ctx.reply("Your notification level is `KICK`.\n"
+                            "You will only be messaged when you are kicked for inactivity.")
+        elif level == NotifyLevel.NONE:
+            await ctx.reply("Your notification level is `NONE`.\n"
+                            "You will never be direct messaged about group status updates.")
+    else:
+        content = ctx.arg_str.lower()
+
+        newlevel = None
+        message = None
+        if content in ["all", "everything"]:
+            newlevel = NotifyLevel.ALL
+            message = ("Your notification level has been set to `ALL`\n"
+                       "You will be notified of all group status changes by direct message.")
+        elif content in ["warnings", "warning"]:
+            newlevel = NotifyLevel.WARNING
+            message = ("Your notification level has been set to `WARNING`.\n"
+                       "You will receive a direct message when you are about to be kicked for inactivity.")
+        elif content in ["final", "kick"]:
+            newlevel = NotifyLevel.FINAL
+            message = ("Your notification level has been set to `KICK`.\n"
+                       "You will only be messaged when you are kicked for inactivity.")
+        elif content in ["none", "dnd"]:
+            newlevel = NotifyLevel.NONE
+            message = ("Your notification level has been set to `NONE`.\n"
+                       "You will never be direct messaged about group status updates.")
+        else:
+            await ctx.error_reply(
+                "I don't understand notification level `{}`! See `help notify` for valid levels.".format(ctx.arg_str)
+            )
+        if newlevel is not None:
+            # Update the db entry
+            ctx.client.config.users.set(ctx.author.id, "notify_level", newlevel.value)
+
+            # Update any existing timers
+            subber = ctx.client.interface.subscribers.get(ctx.author.id, None)
+            if subber is not None:
+                subber.notify = NotifyLevel(newlevel)
+
+            # Send the update message
+            await ctx.reply(message)
