@@ -191,6 +191,7 @@ class Timer(object):
             subber.touch()
             if inactivity_check:
                 if subber.warnings >= self.max_warning:
+                    subber.warnings += 1
                     unsubs.append(subber)
                 elif (self.now() - subber.last_seen) > current_stage.duration * 60:
                     subber.warnings += 1
@@ -285,7 +286,7 @@ class Timer(object):
                 except discord.HTTPException:
                     pass
 
-        if subber in unsubs:
+        for subber in unsubs:
             await subber.unsub()
 
         self.current_stage = stage_index
