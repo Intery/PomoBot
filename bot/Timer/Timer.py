@@ -466,6 +466,8 @@ class TimerChannel(object):
         self.timers = []
         self.msg = None
 
+        self.old_desc = ""
+
     async def update(self):
         """
         Create or update the channel status message.
@@ -473,6 +475,12 @@ class TimerChannel(object):
         messages = [timer.pretty_pinstatus() for timer in self.timers]
         if messages:
             desc = "\n\n".join(messages)
+
+            # Don't resend the same message
+            if desc == self.old_desc:
+                return
+            self.old_desc = desc
+
             embed = discord.Embed(
                 title="Pomodoro Timer Status",
                 description=desc,
