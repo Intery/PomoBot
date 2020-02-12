@@ -214,7 +214,7 @@ async def cmd_globalgroups(ctx):
         newgroup, join, adminrole
     """
     if ctx.arg_str:
-        if not (timer_admin.run(ctx) or ctx.author.guild_permissions.manage_guild):
+        if not (await timer_admin.run(ctx) or ctx.author.guild_permissions.manage_guild):
             return await ctx.error_reply("You need the timeradmin role to configure this setting!")
 
         if ctx.arg_str.lower() == 'off':
