@@ -240,6 +240,7 @@ class Timer(object):
                 except Exception:
                     pass
             else:
+                """
                 await self.channel.send(
                     ("{}\n "
                      "{}No subscribers, stopping group timer.").format(
@@ -248,6 +249,8 @@ class Timer(object):
                      )
                 )
                 self.stop()
+                """
+                pass
 
             # Notify the subscribers as desired
             for subber in self.subscribed.values():
