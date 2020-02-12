@@ -18,14 +18,17 @@ Commands provided:
 """
 
 
-@cmd("restart")
+@cmd("reboot")
 @checks.is_owner()
-async def cmd_shutdown(ctx):
+async def cmd_reboot(ctx):
     """
     Usage``:
-        shutdown
+        reboot
+    Description:
+        Update the timer status save file and reboot the client.
     """
     ctx.client.interface.update_save()
+    await ctx.reply("Saved state. Rebooting now!")
     await ctx.client.logout()
 
 
