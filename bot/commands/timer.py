@@ -44,15 +44,20 @@ async def cmd_join(ctx):
              )
         )
 
+    # Subscribe the member
     await ctx.client.interface.sub(ctx, ctx.author, timer)
 
-    chan_info = " in {}".format(timer.channel.mention) if timer.channel != ctx.ch else ""
+    # Specify channel info if they are joining from a different channel
+    this_channel = (timer.channel == ctx.ch)
+    chan_info = " in {}".format(timer.channel.mention) if not this_channel else ""
 
+    # Reply with the join message
     message = "You have joined the group **{}**{}!".format(timer.name, chan_info)
     if timer.state == TimerState.RUNNING:
-        message += "\nCurrently on stage **{}** with **{}** remaining.".format(
+        message += "\nCurrently on stage **{}** with **{}** remaining. {}".format(
             timer.stages[timer.current_stage].name,
-            timer.pretty_remaining()
+            timer.pretty_remaining(),
+            timer.stages[timer.current_stage].message
         )
     elif timer.stages:
         message += "\nGroup timer is set up but not running. Use `start` to start the timer!"
@@ -60,6 +65,13 @@ async def cmd_join(ctx):
         message += "\nSet up the timer with `set`!"
 
     await ctx.reply(message)
+
+    # Poke a welcome message to the timer channel if we are somewhere else
+    if not this_channel:
+        await timer.channel.send("*{} has joined **{}***. Good luck!".format(
+            ctx.author.mention,
+            timer.name,
+        ))
 
 
 @cmd("leave",
