@@ -192,3 +192,42 @@ async def cmd_adminrole(ctx):
             await ctx.embedreply("Timer admin role set to a nonexistent role `{}`.".format(roleid))
         else:
             await ctx.embedreply("Timer admin role is {}.".format(role.mention))
+
+
+@cmd("globalgroups",
+     group="Configuration",
+     desc="Configure whether groups are accessible away from their channel.")
+@in_guild()
+async def cmd_globalgroups(ctx):
+    """
+    Usage``:
+        globalgroups [off | on]
+    Description:
+        Configure whether groups may only be joined from their associated channel.
+        This can, for instance, allow members to join a group before getting access to
+        the group study channel.
+        **Setting this option required the timer admin role, see `adminrole`.**
+    Options::
+        on: Groups may be joined from any channel.
+        off: Groups may only be joined from the channel they are bound to. (**Default**)
+    Related:
+        newgroup, join, adminrole
+    """
+    if ctx.arg_str:
+        if not (timer_admin.run(ctx) or ctx.author.guild_permissions.manage_guild):
+            return await ctx.error_reply("You need the timeradmin role to configure this setting!")
+
+        if ctx.arg_str.lower() == 'off':
+            ctx.client.config.guilds.set(ctx.guild.id, 'globalgroups', False)
+            await ctx.reply("Groups may now only be joined from their associated channel.")
+        elif ctx.arg_str.lower() == 'on':
+            ctx.client.config.guilds.set(ctx.guild.id, 'globalgroups', True)
+            await ctx.reply("Groups may now be joined from any guild channel.")
+        else:
+            await ctx.error_reply("Unrecognised option `{}`. See `help globalgroups` for usage.".format(ctx.arg_tr))
+    else:
+        setting = ctx.client.config.guilds.get(ctx.guild.id, 'globalgroups')
+        if setting:
+            await ctx.reply("Groups may be joined from any guild channel.")
+        else:
+            await ctx.reply("Groups may only be joined from their associated channel.")

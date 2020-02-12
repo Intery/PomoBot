@@ -17,9 +17,11 @@ async def cmd_join(ctx):
         join
         join <group>
     Description:
-        Join a group in the current channel.
+        Join a group in the current channel or guild.
         If there are multiple matching groups, or no group is provided,
         will show the group selector.
+    Related:
+        leave, status, groups, globalgroups
     Examples``:
         join espresso
     """
@@ -31,12 +33,15 @@ async def cmd_join(ctx):
         )
 
     # Get the timer they want to join
-    timer = await ctx.get_timers_matching(ctx.arg_str, info=True)
+    globalgroups = ctx.client.config.guilds.get(ctx.guild.id, 'globalgroups')
+    timer = await ctx.get_timers_matching(ctx.arg_str, channel_only=(not globalgroups), info=True)
 
     if timer is None:
         return await ctx.error_reply(
-            ("No matching groups in this channel.\n"
-             "Use the `groups` command to see the groups in this guild!")
+            ("No matching groups in this {}.\n"
+             "Use the `groups` command to see the groups in this guild!").format(
+                 'guild' if globalgroups else 'channel'
+             )
         )
 
     await ctx.client.interface.sub(ctx, ctx.author, timer)
@@ -174,6 +179,9 @@ async def cmd_start(ctx):
         return await ctx.error_reply("Please set up the timer first!")
 
     await timer.start()
+
+    if timer.channel != ctx.ch:
+        await ctx.reply("Timer has been started in {}".format(timer.channel.mention))
 
 
 @cmd("stop",
