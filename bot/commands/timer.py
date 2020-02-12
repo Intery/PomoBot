@@ -46,7 +46,9 @@ async def cmd_join(ctx):
 
     await ctx.client.interface.sub(ctx, ctx.author, timer)
 
-    message = "You have joined the group **{}**!".format(timer.name)
+    chan_info = " in {}".format(timer.channel.mention) if timer.channel != ctx.ch else ""
+
+    message = "You have joined the group **{}**{}!".format(timer.name, chan_info)
     if timer.state == TimerState.RUNNING:
         message += "\nCurrently on stage **{}** with **{}** remaining.".format(
             timer.stages[timer.current_stage].name,
