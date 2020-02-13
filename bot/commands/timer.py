@@ -25,13 +25,6 @@ async def cmd_join(ctx):
     Examples``:
         join espresso
     """
-    # Quit if the author is already in a timer
-    timer = ctx.client.interface.get_timer_for(ctx.author.id)
-    if timer is not None:
-        return await ctx.error_reply(
-            "You are already in the group `{}` in {}!".format(timer.name, timer.channel.mention)
-        )
-
     # Get the timer they want to join
     globalgroups = ctx.client.config.guilds.get(ctx.guild.id, 'globalgroups')
     timer = await ctx.get_timers_matching(ctx.arg_str, channel_only=(not globalgroups), info=True)
@@ -43,6 +36,23 @@ async def cmd_join(ctx):
                  'guild' if globalgroups else 'channel'
              )
         )
+
+    # Query if the author is already in a group
+    current_timer = ctx.client.interface.get_timer_for(ctx.author.id)
+    if current_timer is not None:
+        if current_timer == timer:
+            return await ctx.error_reply("You are already in this group!\nUse `status` to see the current timer status.")
+
+        chan_info = " in {}".format(current_timer.channel.mention) if current_timer.channel != ctx.ch else ""
+        result = await ctx.ask("You are already in the group `{}`{}.\nAre you sure you want to switch?".format(
+            current_timer.name,
+            chan_info
+        ))
+        if not result:
+            return
+
+        await current_timer.subscribed[ctx.author.id].unsub()
+
 
     # Subscribe the member
     await ctx.client.interface.sub(ctx, ctx.author, timer)
