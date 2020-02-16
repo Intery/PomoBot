@@ -24,6 +24,8 @@ class Timer(object):
 
         self.subscribed = {}  # Dict of subbed members, userid maps to (user, lastupdate, timesubbed)
 
+        self.timer_messages = []  # List of sent messages that this timer owns, e.g. for reaction handling
+
         self.last_clockupdate = 0
 
         if stages:
@@ -239,6 +241,10 @@ class Timer(object):
                     await out_msg.add_reaction("✅")
                 except Exception:
                     pass
+
+                # Add the stage message to the owned message list
+                self.timer_messages.append(out_msg)
+                self.timer_messages = self.timer_messages[-5:]  # Truncate
             else:
                 """
                 await self.channel.send(

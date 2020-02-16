@@ -6,10 +6,12 @@ import asyncio
 
 import discord
 
+from cmdClient import Context
+
 from logger import log
 
 from .trackers import message_tracker, reaction_tracker
-from .Timer import Timer, TimerChannel, TimerSubscriber, TimerStage, NotifyLevel
+from .Timer import Timer, TimerChannel, TimerSubscriber, TimerStage, NotifyLevel, TimerState
 from .registry import TimerRegistry
 
 
@@ -46,6 +48,7 @@ class TimerInterface(object):
         # Track user activity in timer channels
         client.add_after_event("message", message_tracker)
         client.add_after_event("reaction_add", reaction_tracker)
+        client.add_after_event("reaction_add", self.reaction_sub)
 
     async def launch(self, client):
         if self.ready:
@@ -187,6 +190,55 @@ class TimerInterface(object):
 
         self.last_save = Timer.now()
 
+    async def reaction_sub(self, client, reaction, user):
+        """
+        Subscribe a user to a timer if press the subscribe reaction.
+        """
+        # Return if the emoji isn't the right one
+        if reaction.emoji != "✅":
+            return
+
+        # Return if the user is already subscribed
+        if user.id in self.subscribers:
+            return
+
+        # Quit if the user is a bot (usually the client itself)
+        if user.bot:
+            return
+
+        # Get the timers in the current channel
+        tchan = self.channels.get(reaction.message.channel.id, None)
+        if tchan is None:
+            return
+        timers = tchan.timers
+
+        # Get the timer who owns the message, if any
+        timer = next((timer for timer in timers if reaction.message.id in [m.id for m in timer.timer_messages]), None)
+        if timer is None:
+            return
+
+        # Finally, subscribe the user to the timer
+        ctx = Context(client, channel=timer.channel, guild=timer.channel.guild, author=user)
+        log("Reaction-subscribing user {} (uid: {}) to timer {} (rid: {})".format(user.name,
+                                                                                  user.id,
+                                                                                  timer.name,
+                                                                                  timer.role.id),
+            context="TIMER_INTERFACE")
+        await self.sub(ctx, user, timer)
+
+        # Send a welcome message
+        welcome = "Welcome to **{}**, {}!\n".format(timer.name, user.mention)
+        if timer.stages and timer.state == TimerState.RUNNING:
+            welcome += "Currently on stage **{}** with **{}** remaining. {}".format(
+                timer.stages[timer.current_stage].name,
+                timer.pretty_remaining(),
+                timer.stages[timer.current_stage].message
+            )
+        elif timer.stages:
+            welcome += "Group timer is set up but not running."
+
+        await ctx.ch.send(welcome)
+
     def create_timer(self, group_name, group_role, bound_channel, clock_channel):
         guild = group_role.guild
 
@@ -262,6 +314,12 @@ class TimerInterface(object):
                 subber.bump()
 
     async def sub(self, ctx, member, timer):
+        log("Subscribing user {} (uid: {}) to timer {} (rid: {})".format(member.name,
+                                                                         member.id,
+                                                                         timer.name,
+                                                                         timer.role.id),
+            context="TIMER_INTERFACE")
+
         # Get the notify level
         notify = ctx.client.config.users.get(member.id, "notify_level")
         notify = NotifyLevel(notify) if notify is not None else NotifyLevel.WARNING
