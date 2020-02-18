@@ -424,10 +424,10 @@ async def cmd_syncwith(ctx):
     elapsed = 0
     while elapsed < target_duration:
         i = (i + 1) % len(current_timer.stages)
-        elapsed += sync_timer.stages[i].duration * 60
+        elapsed += current_timer.stages[i].duration * 60
 
     # Calculate new stage start
-    new_stage_start = sync_timer.now() - (sync_timer.stages[i].duration * 60 - (elapsed - target_duration))
+    new_stage_start = sync_timer.now() - (current_timer.stages[i].duration * 60 - (elapsed - target_duration))
 
     # Change the stage and adjust the time
     await current_timer.change_stage(i, notify=False, inactivity_check=False, report_old=False)
