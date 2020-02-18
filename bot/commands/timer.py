@@ -267,7 +267,7 @@ async def cmd_group(ctx):
     if ctx.arg_str:
         timer = await ctx.get_timers_matching(ctx.arg_str, channel_only=False)
         if timer is None:
-            return await ctx.error_reply("No groups matching `{}` in this channel!".format(ctx.arg_str))
+            return await ctx.error_reply("No groups matching `{}`!".format(ctx.arg_str))
     else:
         timer = ctx.client.interface.get_timer_for(ctx.author.id)
         if timer is None:
@@ -379,3 +379,60 @@ async def cmd_rename(ctx):
         )
     timer.name = ctx.arg_str
     await ctx.embedreply("Your group has been renamed to **{}**.".format(ctx.arg_str))
+
+
+@cmd("syncwith",
+     group="Timer",
+     desc="Sync the start of your group timer with another group")
+async def cmd_syncwith(ctx):
+    """
+    Usage``:
+        syncwith <group>
+    Description:
+        Align the start of your group timer with the other group.
+        This will possibly change your stage without notification.
+    Arguments::
+        group: The name of the group to sync with.
+    Related:
+        join, status, groups, set
+    """
+    # Check an argumnet was given
+    if not ctx.arg_str:
+        return await ctx.error_reply("No group name provided!\n**Usage:** `syncwith <group>`.")
+
+    # Check the author is in a group
+    current_timer = ctx.client.interface.get_timer_for(ctx.author.id)
+    if current_timer is None:
+        return await ctx.error_reply("You can only sync a group you are a member of!")
+
+    # Get the target timer to sync with
+    sync_timer = await ctx.get_timers_matching(ctx.arg_str, channel_only=False)
+    if sync_timer is None:
+        return await ctx.error_reply("No groups matching `{}`!".format(ctx.arg_str))
+
+    # Check both timers are set up
+    if not sync_timer.stages or not current_timer.stages:
+        return await ctx.error_reply("Both the current and target timer must be set up first!")
+
+    # Calculate the total duration from the start of the timer
+    target_duration = sum(stage.duration for i, stage in enumerate(sync_timer.stages) if i < sync_timer.current_stage)
+    target_duration *= 60
+    target_duration += sync_timer.now() - sync_timer.current_stage_start
+
+    # Calculate the target stage in the current timer
+    i = -1
+    elapsed = 0
+    while elapsed < target_duration:
+        i = (i + 1) % len(current_timer.stages)
+        elapsed += sync_timer.stages[i].duration * 60
+
+    # Calculate new stage start
+    new_stage_start = sync_timer.now() - (sync_timer.stages[i].duration * 60 - (elapsed - target_duration))
+
+    # Change the stage and adjust the time
+    await current_timer.change_stage(i, notify=False, inactivity_check=False, report_old=False)
+    current_timer.current_stage_start = new_stage_start
+    current_timer.remaining = elapsed - target_duration
+
+    # Notify the user
+    await ctx.embedreply(current_timer.pretty_pinstatus(), title="Timers synced!")
