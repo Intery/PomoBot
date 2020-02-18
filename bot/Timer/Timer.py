@@ -69,7 +69,7 @@ class Timer(object):
 
         # Get the name and time strings
         stage_name = self.stages[self.current_stage].name
-        remaining_time = self.pretty_remaining()
+        remaining_time = self.pretty_remaining(round=True)
 
         # Update the channel name, or quit silently if something goes wrong.
         try:
@@ -78,11 +78,11 @@ class Timer(object):
             pass
         self.last_clockupdate = self.now()
 
-    def pretty_remaining(self):
+    def pretty_remaining(self, round=False):
         """
         Return a formatted version of the time remaining until the next stage.
         """
-        return self.parse_dur(self.remaining)
+        return self.parse_dur(self.remaining, round=round)
 
     def pretty_pinstatus(self):
         """
@@ -344,7 +344,7 @@ class Timer(object):
         return int(datetime.datetime.timestamp(datetime.datetime.utcnow()))
 
     @staticmethod
-    def parse_dur(diff):
+    def parse_dur(diff, round=False):
         """
         Parse a duration given in seconds to a time string.
         """
@@ -352,6 +352,8 @@ class Timer(object):
         hours = diff // 3600
         minutes = (diff % 3600) // 60
         seconds = diff % 60
+        if round:
+            seconds = seconds // 5 * 5
 
         return "{:02d}:{:02d}:{:02d}".format(hours, minutes, seconds)
 
