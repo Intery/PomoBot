@@ -34,7 +34,10 @@ Requirements and Installation
 To self-host PomoBot, you first need a *Discord Bot Token*, which you can obtain by following [this guide](https://discordpy.readthedocs.io/en/latest/discord.html).
 You will also need `python3.6` or greater, and a stable internet connection.
 Steps:
-* Clone the repository into a folder of your choosing.
+* Clone the repository into a folder of your choosing with the `--recurse-submodules` option. For example,
+```
+git clone --recurse-submodules https://github.com/Intery/PomoBot.git
+```
 * Install the requirements in `requirements.txt` (typically by running `pip3 install -r requirements.txt`).
 * Copy the `example-bot.conf` file under `config` to `config/bot.conf`, and edit it to include your bot token.
 * Run `startup.sh`, or for Windows users, `python3 bot/main.py`, from the top directory.
