@@ -27,7 +27,7 @@ Many more features are planned, including graphical leaderboards and statistical
 PomoBot easily supports multiple guilds (a public implementation will be available soon), but is not optimised as a "one instance" bot, and there are no plans to implement sharding in the near future.
 You are welcome to use the public implementation, but for long term use it is recommended you follow the installation instructions below to host your own copy.
 
-PomoBot was originally developed for the [WYSC Study Cafe](https://wysc.netlify.com/), of which the author is an active and proud member, but is in no way affiliated with WYSC.
+PomoBot was originally developed for [Wysc - Virtual Study Cafe](https://wysc.us.to/), of which the author is an active and proud member, but is in no way affiliated with Wysc.
 
 Requirements and Installation
 -----------------------------
