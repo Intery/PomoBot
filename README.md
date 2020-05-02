@@ -1,3 +1,6 @@
+Invite the public implementation [here](https://discordapp.com/api/oauth2/authorize?client_id=674238793431384067&permissions=0&scope=bot), and join the [support guild](https://discord.gg/MnMrQDe) if you have any questions or issues.
+
+
 The Idea
 --------
 The **Pomodoro Technique** is a time management method that has been used to boost productivity for students and workers since 1980.
@@ -24,7 +27,7 @@ PomoBot has the following primary features:
 
 Many more features are planned, including graphical leaderboards and statistical analysis, and the bot is under user-driven active development.
 
-PomoBot easily supports multiple guilds (a public implementation will be available soon), but is not optimised as a "one instance" bot, and there are no plans to implement sharding in the near future.
+PomoBot easily supports multiple guilds (a public implementation is available [here](https://discordapp.com/api/oauth2/authorize?client_id=674238793431384067&permissions=0&scope=bot)), but is not optimised as a "one instance" bot, and there are no plans to implement sharding in the near future.
 You are welcome to use the public implementation, but for long term use it is recommended you follow the installation instructions below to host your own copy.
 
 PomoBot was originally developed for [Wysc - Virtual Study Cafe](https://wysc.us.to/), of which the author is an active and proud member, but is in no way affiliated with Wysc.
@@ -43,7 +46,8 @@ git clone --recurse-submodules https://github.com/Intery/PomoBot.git
 * Run `startup.sh`, or for Windows users, `python3 bot/main.py`, from the top directory.
 
 That's it! PomoBot will now be running on the bot client you created.
-If you have any issues or find any bugs, please submit an issue via the github issues page, together with any relevant log information.
+If you have any issues or find any bugs, please submit an issue via the github issues page, together with any relevant log information. You can also join the [support guild](https://discord.gg/MnMrQDe) and ask your question directly.
+ 
 Suggestions for new features are also welcome!
 
 Documentation
