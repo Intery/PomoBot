@@ -182,6 +182,13 @@ async def cmd_lb(ctx):
             total_dict[session['userid']] = 0
         total_dict[session['userid']] += session['duration']
 
+    for userid in ctx.client.interface.subscribers:
+        sub_data = ctx.client.interface.subscribers[userid].session_data()
+        if sub_data[1] == ctx.guild.id:
+            if userid not in total_dict:
+                total_dict[userid] = 0
+            total_dict[userid] += sub_data[4]
+
     # Reshape and sort the totals
     totals = sorted(list(total_dict.items()), key=lambda tup: tup[1], reverse=True)
 
@@ -198,9 +205,6 @@ async def cmd_lb(ctx):
                 user_str = str(userid)
         else:
             user_str = user.name
-
-        if userid in ctx.client.interface.subscribers:
-            total += ctx.client.interface.subscribers[userid].session_data()[4]
 
         total_strs.append((user_str, _parse_duration(total)))
 
