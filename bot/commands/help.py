@@ -17,7 +17,9 @@ help_groups = [
 # Set the main help string
 help_str = ("Flexible study or work group timer using a customisable Pomodoro system!\n"
             "Supports multiple groups and different timer setups.\n"
-            "Use the `guide` command to see a quick usage guide.")
+            "Join the [support server](https://discord.gg/MnMrQDe) "
+            "or make an issue on the [repository](https://github.com/Intery/PomoBot)\n"
+            "if you have any questions or issues.")
 
 help_title = "CafePomodoro Documentation"
 
