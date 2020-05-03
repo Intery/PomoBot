@@ -320,6 +320,9 @@ class TimerInterface(object):
                                                                          timer.role.id),
             context="TIMER_INTERFACE")
 
+        # Ensure that the user is not subscribed elsewhere
+        await self.unsub(member.id)
+
         # Get the notify level
         notify = ctx.client.config.users.get(member.id, "notify_level")
         notify = NotifyLevel(notify) if notify is not None else NotifyLevel.WARNING
