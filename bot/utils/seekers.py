@@ -187,3 +187,103 @@ async def find_channel(ctx, userstr, interactive=False, collection=None, chan_ty
         await ctx.error_reply("Couldn't find a channel matching `{}`!".format(userstr))
 
     return chan
+
+@Context.util
+async def find_member(ctx, userstr, interactive=False, collection=None):
+    """
+    Find a guild member given a partial matching string,
+    allowing custom member collections.
+
+    Parameters
+    ----------
+    userstr: str
+        String obtained from a user, expected to partially match a member in the collection.
+        The string will be tested against both the userid, full user name and user nickname.
+    interactive: bool
+        Whether to offer the user a list of members to choose from,
+        or pick the first matching channel.
+    collection: List(discord.Member)
+        Collection of members to search amongst.
+        If none, uses the full guild member list.
+
+    Returns
+    -------
+    discord.Member:
+        If a valid member is found.
+    None:
+        If no valid member has been found.
+
+    Raises
+    ------
+    cmdClient.lib.UserCancelled:
+        If the user cancels interactive member selection.
+    cmdClient.lib.ResponseTimedOut:
+        If the user fails to respond to interactive member selection within `60` seconds`
+    """
+    # Handle invalid situations and input
+    if not ctx.guild:
+        raise InvalidContext("Attempt to use find_member outside of a guild.")
+
+    if userstr == "":
+        raise ValueError("User string passed to find_member was empty.")
+
+    # Create the collection to search from args or guild members
+    collection = collection if collection else ctx.guild.members
+
+    # If the user input was a number or possible member mention, extract it
+    userid = userstr.strip('<#@&!>')
+    userid = int(userid) if userid.isdigit() else None
+    searchstr = userstr.lower()
+
+    # Find the member
+    member = None
+
+    # Check method to determine whether a member matches
+    def check(member):
+        return (
+            member.id == userid
+            or searchstr in member.display_name.lower()
+            or searchstr in str(member).lower()
+        )
+
+    # Get list of matching roles
+    members = list(filter(check, collection))
+
+    if len(members) == 0:
+        # Nope
+        member = None
+    elif len(members) == 1:
+        # Select our lucky winner
+        member = members[0]
+    else:
+        # We have multiple matching members!
+        if interactive:
+            # Interactive prompt with the list of members
+            member_names = [
+                "{} {}".format(
+                    member.nick if member.nick else (member if members.count(member) > 1
+                                                     else member.name),
+                    ("<{}>".format(member)) if member.nick else ""
+                ) for member in members
+            ]
+
+            try:
+                selected = await ctx.selector(
+                    "`{}` members found matching `{}`!".format(len(members), userstr),
+                    member_names,
+                    timeout=60
+                )
+            except UserCancelled:
+                raise UserCancelled("User cancelled member selection.") from None
+            except ResponseTimedOut:
+                raise ResponseTimedOut("Member selection timed out.") from None
+
+            member = members[selected]
+        else:
+            # Just select the first one
+            member = members[0]
+
+    if member is None:
+        await ctx.error_reply("Couldn't find a member matching `{}`!".format(userstr))
+
+    return member
