@@ -24,7 +24,7 @@ class Timer(object):
 
         self.subscribed = {}  # Dict of subbed members, userid maps to (user, lastupdate, timesubbed)
 
-        self.timer_messages = []  # List of sent messages that this timer owns, e.g. for reaction handling
+        self.timer_messages = []  # List of sent message ids that this timer owns, e.g. for reaction handling
 
         self.last_clockupdate = 0
 
@@ -243,7 +243,7 @@ class Timer(object):
                     pass
 
                 # Add the stage message to the owned message list
-                self.timer_messages.append(out_msg)
+                self.timer_messages.append(out_msg.id)
                 self.timer_messages = self.timer_messages[-5:]  # Truncate
             else:
                 """
@@ -370,7 +370,8 @@ class Timer(object):
             'remaining': self.remaining,
             'state': self.state.value,
             'stages': [stage.serialise() for stage in self.stages] if self.stages else None,
-            'current_stage': self.current_stage
+            'current_stage': self.current_stage,
+            'messages': self.timer_messages,
         }
 
     def update_from_data(self, data):
@@ -382,8 +383,11 @@ class Timer(object):
         self.current_stage_start = data['current_stage_start']
         self.remaining = data['remaining']
         self.state = TimerState(data['state'])
-        self.stages = [TimerStage.deserialise(stage_data) for stage_data in data['stages']] if data['stages'] else None
-        self.current_stage = data['current_stage']
+        self.stages = [
+            TimerStage.deserialise(stage_data) for stage_data in data['stages']
+        ] if data['stages'] else None
+        self.current_stage = data.get('current_stage', 0)
+        self.timer_messages = data.get('messages', [])
 
         asyncio.ensure_future(self.runloop())
         return self

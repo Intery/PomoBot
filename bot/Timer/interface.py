@@ -47,8 +47,8 @@ class TimerInterface(object):
 
         # Track user activity in timer channels
         client.add_after_event("message", message_tracker)
-        client.add_after_event("reaction_add", reaction_tracker)
-        client.add_after_event("reaction_add", self.reaction_sub)
+        client.add_after_event("raw_reaction_add", reaction_tracker)
+        client.add_after_event("raw_reaction_add", self.reaction_sub)
 
     async def launch(self, client):
         if self.ready:
@@ -190,31 +190,47 @@ class TimerInterface(object):
 
         self.last_save = Timer.now()
 
-    async def reaction_sub(self, client, reaction, user):
+    async def reaction_sub(self, client, payload):
         """
         Subscribe a user to a timer if press the subscribe reaction.
         """
         # Return if the emoji isn't the right one
-        if reaction.emoji != "✅":
+        if str(payload.emoji) != "✅":
             return
 
         # Return if the user is already subscribed
-        if user.id in self.subscribers:
+        if payload.user_id in self.subscribers:
             return
 
-        # Quit if the user is a bot (usually the client itself)
-        if user.bot:
+        # Quit if the user is the client
+        if payload.user_id == client.user.id:
+            return
+
+        # Quit if the reaction is in DM or we can't see the guild
+        if payload.guild_id is None:
+            return
+        guild = client.get_guild(payload.guild_id)
+        if guild is None:
             return
 
         # Get the timers in the current channel
-        tchan = self.channels.get(reaction.message.channel.id, None)
+        tchan = self.channels.get(payload.channel_id, None)
         if tchan is None:
             return
         timers = tchan.timers
 
         # Get the timer who owns the message, if any
-        timer = next((timer for timer in timers if reaction.message.id in [m.id for m in timer.timer_messages]), None)
+        timer = next((timer for timer in timers if payload.message_id in timer.timer_messages), None)
         if timer is None:
+            return
+
+        # Get the reacting user
+        user = guild.get_member(payload.user_id)
+        if user is None:
+            log(("Recieved subscribe reaction from (uid: {}) "
+                 "in (cid: {}) but could not find the user!").format(payload.user_id, payload.channel_id),
+                context="TIMER_INTERFACE",
+                level=logging.ERROR)
             return
 
         # Finally, subscribe the user to the timer
