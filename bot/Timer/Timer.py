@@ -5,7 +5,7 @@ from enum import Enum
 
 
 class Timer(object):
-    clock_period = 5
+    clock_period = 600
     max_warning = 1
 
     def __init__(self, name, role, channel, clock_channel, stages=None):
@@ -55,7 +55,7 @@ class Timer(object):
         # Return self for method chaining
         return self
 
-    async def update_clock_channel(self):
+    async def update_clock_channel(self, force=False):
         """
         Try to update the name of the status channel with the current status
         """
@@ -64,25 +64,26 @@ class Timer(object):
             return
 
         # Quit if we aren't due for a clock update yet
-        if self.now() - self.last_clockupdate < self.clock_period:
+        if not force and self.now() - self.last_clockupdate < self.clock_period:
             return
 
         # Get the name and time strings
         stage_name = self.stages[self.current_stage].name
-        remaining_time = self.pretty_remaining(round=True)
+        remaining_time = self.pretty_remaining(show_seconds=True)
 
         # Update the channel name, or quit silently if something goes wrong.
+        self.last_clockupdate = self.now()
         try:
             await self.clock_channel.edit(name="{} - {}".format(stage_name, remaining_time))
+            self.last_clockupdate = self.now()
         except Exception:
             pass
-        self.last_clockupdate = self.now()
 
-    def pretty_remaining(self, round=False):
+    def pretty_remaining(self, show_seconds=False):
         """
         Return a formatted version of the time remaining until the next stage.
         """
-        return self.parse_dur(self.remaining, round=round)
+        return self.parse_dur(self.remaining, show_seconds=show_seconds)
 
     def pretty_pinstatus(self):
         """
@@ -330,10 +331,11 @@ class Timer(object):
             if self.remaining <= 0:
                 try:
                     await self.change_stage(self.current_stage + 1)
+                    asyncio.ensure_future(self.update_clock_channel(force=True))
                 except Exception:
                     pass
 
-            await self.update_clock_channel()
+            asyncio.ensure_future(self.update_clock_channel())
             await asyncio.sleep(1)
 
     @staticmethod
@@ -344,18 +346,23 @@ class Timer(object):
         return int(datetime.datetime.timestamp(datetime.datetime.utcnow()))
 
     @staticmethod
-    def parse_dur(diff, round=False):
+    def parse_dur(diff, show_seconds=False):
         """
         Parse a duration given in seconds to a time string.
         """
         diff = max(diff, 0)
-        hours = diff // 3600
-        minutes = (diff % 3600) // 60
-        seconds = diff % 60
-        if round:
-            seconds = seconds // 5 * 5
+        if show_seconds:
+            diff = int(60 * round(diff / 60))
+            hours = diff // 3600
+            minutes = (diff % 3600) // 60
+            return "{:02d}:{:02d}".format(hours, minutes)
+        else:
+            hours = diff // 3600
+            minutes = (diff % 3600) // 60
+            seconds = diff % 60
+            return "{:02d}:{:02d}:{:02d}".format(hours, minutes, seconds)
 
-        return "{:02d}:{:02d}:{:02d}".format(hours, minutes, seconds)
+
 
     def serialise(self):
         """
