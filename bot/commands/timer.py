@@ -41,7 +41,8 @@ async def cmd_join(ctx):
     current_timer = ctx.client.interface.get_timer_for(ctx.author.id)
     if current_timer is not None:
         if current_timer == timer:
-            return await ctx.error_reply("You are already in this group!\nUse `status` to see the current timer status.")
+            return await ctx.error_reply("You are already in this group!\n"
+                                         "Use `status` to see the current timer status.")
 
         chan_info = " in {}".format(current_timer.channel.mention) if current_timer.channel != ctx.ch else ""
         result = await ctx.ask("You are already in the group `{}`{}.\nAre you sure you want to switch?".format(
@@ -170,7 +171,8 @@ async def cmd_set(ctx):
 
 @cmd("start",
      group="Timer",
-     desc="Start your timer.")
+     desc="Start your timer.",
+     aliases=["restart"])
 async def cmd_start(ctx):
     """
     Usage``:
@@ -189,7 +191,10 @@ async def cmd_start(ctx):
             await ctx.error_reply("Please join a group first!")
         return
     if timer.state == TimerState.RUNNING:
-        return await ctx.error_reply("Your group timer is already running!")
+        if await ctx.ask("Are you sure you want to restart your study group timer?"):
+            timer.stop()
+        else:
+            return
 
     if ctx.arg_str:
         stages = ctx.client.interface.parse_setupstr(ctx.arg_str)
