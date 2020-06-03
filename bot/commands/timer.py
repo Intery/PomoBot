@@ -1,5 +1,5 @@
 # import datetime
-# import discord
+import discord
 from cmdClient import cmd
 
 from Timer import TimerState, NotifyLevel
@@ -53,7 +53,6 @@ async def cmd_join(ctx):
             return
 
         await current_timer.subscribed[ctx.author.id].unsub()
-
 
     # Subscribe the member
     await ctx.client.interface.sub(ctx, ctx.author, timer)
@@ -247,15 +246,31 @@ async def cmd_groups(ctx):
     if not ctx.client.interface.get_guild_timers(ctx.guild.id):
         return await ctx.error_reply("There are no groups set up in this guild!")
 
-    # Build the embed description
-    sections = []
-    for tchan in ctx.client.interface.guild_channels[ctx.guild.id]:
-        sections.append("{}\n\n{}".format(
-            tchan.channel.mention,
-            "\n\n".join(timer.pretty_summary() for timer in tchan.timers)
-        ))
+    if "live_grouptokens" not in ctx.client.objects:
+        ctx.client.objects["live_grouptokens"] = {}
+    ctx.client.objects["live_grouptokens"][ctx.ch.id] = ctx.msg.id
 
-    await ctx.embedreply("\n\n\n".join(sections), title="Group timers in this guild")
+    async def _groups():
+        # Check if we have a new token
+        if ctx.client.objects["live_grouptokens"].get(ctx.ch.id, 0) != ctx.msg.id:
+            return None
+
+        # Build the embed description
+        sections = []
+        for tchan in ctx.client.interface.guild_channels[ctx.guild.id]:
+            sections.append("{}\n\n{}".format(
+                tchan.channel.mention,
+                "\n\n".join(timer.pretty_summary() for timer in tchan.timers)
+            ))
+
+        embed = discord.Embed(
+            description="\n\n\n".join(sections),
+            colour=discord.Colour(0x9b59b6),
+            title="Group timers in this guild"
+        )
+        return {'embed': embed}
+
+    await ctx.live_reply(_groups)
 
 
 @cmd("status",
@@ -280,7 +295,22 @@ async def cmd_group(ctx):
             if timer is None:
                 return await ctx.error_reply("No groups are set up in this guild.")
 
-    await ctx.embedreply(timer.pretty_pinstatus())
+    if "live_statustokens" not in ctx.client.objects:
+        ctx.client.objects["live_statustokens"] = {}
+    ctx.client.objects["live_statustokens"][ctx.ch.id] = ctx.msg.id
+
+    async def _status():
+        # Check if we have a new token
+        if ctx.client.objects["live_statustokens"].get(ctx.ch.id, 0) != ctx.msg.id:
+            return None
+
+        embed = discord.Embed(
+            description=timer.pretty_pinstatus(),
+            colour=discord.Colour(0x9b59b6)
+        )
+        return {'embed': embed}
+
+    await ctx.live_reply(_status)
 
 
 @cmd("notify",

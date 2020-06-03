@@ -68,7 +68,7 @@ class TimerInterface(object):
             if Timer.now() - self.last_save > self.save_interval:
                 self.update_save()
 
-            await asyncio.sleep(2)
+            await asyncio.sleep(5)
 
     def load_timers(self):
         client = self.client
