@@ -151,8 +151,13 @@ async def cmd_set(ctx):
             await ctx.error_reply("Please join a group first!")
         return
     if timer.state == TimerState.RUNNING:
-        if not await ctx.ask("The timer is running! Are you sure you want to reset it?"):
-            return
+        if ctx.arg_str:
+            if not await ctx.ask("The timer is running! Are you sure you want to reset it?"):
+                return
+        else:
+            if not await ctx.ask("The timer is running! Are you sure you want to reset it? "
+                                 "This will reset the stage sequence to the default!"):
+                return
 
     setupstr = ctx.arg_str or (
         "Study, 25, Good luck!; Break, 5, Have a rest.;"
@@ -232,6 +237,11 @@ async def cmd_stop(ctx):
         return
     if timer.state == TimerState.STOPPED:
         return await ctx.error_reply("Can't stop something that's not moving!")
+
+    if len(timer.subscribed) > 1:
+        if not await ctx.ask("There are other people in your study group! "
+                             "Are you sure you want to stop the study group timer?"):
+            return
 
     timer.stop()
     await ctx.reply("Your timer has been stopped.")
