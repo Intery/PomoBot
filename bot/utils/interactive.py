@@ -252,7 +252,7 @@ async def input(ctx, msg="", timeout=120):
     # Listen for the reply
     try:
         result_msg = await ctx.client.wait_for("message", check=checks, timeout=timeout)
-    except asnycio.TimeoutError:
+    except asyncio.TimeoutError:
         raise ResponseTimedOut("Session timed out waiting for user response.") from None
 
     result = result_msg.content
