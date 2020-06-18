@@ -1,6 +1,7 @@
 # import datetime
 import discord
 from cmdClient import cmd
+from cmdClient.checks import in_guild
 
 from Timer import TimerState, NotifyLevel
 
@@ -11,6 +12,7 @@ from utils import timer_utils, interactive, ctx_addons  # noqa
      group="Timer",
      desc="Join a group bound to the current channel.",
      aliases=['sub'])
+@in_guild()
 async def cmd_join(ctx):
     """
     Usage``:
@@ -38,7 +40,7 @@ async def cmd_join(ctx):
         )
 
     # Query if the author is already in a group
-    current_timer = ctx.client.interface.get_timer_for(ctx.author.id)
+    current_timer = ctx.client.interface.get_timer_for(ctx.guild.id, ctx.author.id)
     if current_timer is not None:
         if current_timer == timer:
             return await ctx.error_reply("You are already in this group!\n"
@@ -97,13 +99,13 @@ async def cmd_unsub(ctx):
     Related:
         join, status, groups
     """
-    timer = ctx.client.interface.get_timer_for(ctx.author.id)
+    timer = ctx.client.interface.get_timer_for(ctx.guild.id, ctx.author.id)
     if timer is None:
         return await ctx.error_reply(
             "You need to join a group before you can leave one!"
         )
 
-    session = await ctx.client.interface.unsub(ctx.author.id)
+    session = await ctx.client.interface.unsub(ctx.guild.id, ctx.author.id)
     clocked = session[-1]
 
     dur = int(clocked)
@@ -142,7 +144,7 @@ async def cmd_set(ctx):
     Related:
         join, start
     """
-    timer = ctx.client.interface.get_timer_for(ctx.author.id)
+    timer = ctx.client.interface.get_timer_for(ctx.guild.id, ctx.author.id)
     if timer is None:
         tchan = ctx.client.interface.channels.get(ctx.ch.id, None)
         if tchan is None or not tchan.timers:
@@ -186,7 +188,7 @@ async def cmd_start(ctx):
         Start the timer you are subscribed to.
         Can be used with a setup string to set up and start the timer in one go.
     """
-    timer = ctx.client.interface.get_timer_for(ctx.author.id)
+    timer = ctx.client.interface.get_timer_for(ctx.guild.id, ctx.author.id)
     if timer is None:
         tchan = ctx.client.interface.channels.get(ctx.ch.id, None)
         if tchan is None or not tchan.timers:
@@ -227,7 +229,7 @@ async def cmd_stop(ctx):
     Description:
         Stop the timer you are subscribed to.
     """
-    timer = ctx.client.interface.get_timer_for(ctx.author.id)
+    timer = ctx.client.interface.get_timer_for(ctx.guid.id, ctx.author.id)
     if timer is None:
         tchan = ctx.client.interface.channels.get(ctx.ch.id, None)
         if tchan is None or not tchan.timers:
@@ -251,6 +253,7 @@ async def cmd_stop(ctx):
      group="Timer",
      desc="View the guild's groups.",
      aliases=["timers"])
+@in_guild()
 async def cmd_groups(ctx):
     # Handle there being no timers
     if not ctx.client.interface.get_guild_timers(ctx.guild.id):
@@ -287,6 +290,7 @@ async def cmd_groups(ctx):
      group="Timer",
      desc="View detailed information about a group.",
      aliases=["group", "timer"])
+@in_guild()
 async def cmd_group(ctx):
     """
     Usage``:
@@ -299,7 +303,7 @@ async def cmd_group(ctx):
         if timer is None:
             return await ctx.error_reply("No groups matching `{}`!".format(ctx.arg_str))
     else:
-        timer = ctx.client.interface.get_timer_for(ctx.author.id)
+        timer = ctx.client.interface.get_timer_for(ctx.guild.id, ctx.author.id)
         if timer is None:
             timer = await ctx.get_timers_matching("", channel_only=False)
             if timer is None:
@@ -390,8 +394,7 @@ async def cmd_notify(ctx):
             ctx.client.config.users.set(ctx.author.id, "notify_level", newlevel.value)
 
             # Update any existing timers
-            subber = ctx.client.interface.subscribers.get(ctx.author.id, None)
-            if subber is not None:
+            for subber in ctx.client.interface.get_subs_for(ctx.author.id):
                 subber.notify = NotifyLevel(newlevel)
 
             # Send the update message
@@ -412,7 +415,7 @@ async def cmd_rename(ctx):
     Related:
         join, status, groups
     """
-    timer = ctx.client.interface.get_timer_for(ctx.author.id)
+    timer = ctx.client.interface.get_timer_for(ctx.guild.id, ctx.author.id)
     if timer is None:
         return await ctx.error_reply(
             "You need to join a group first!"
@@ -429,6 +432,7 @@ async def cmd_rename(ctx):
 @cmd("syncwith",
      group="Timer",
      desc="Sync the start of your group timer with another group")
+@in_guild()
 async def cmd_syncwith(ctx):
     """
     Usage``:
@@ -446,7 +450,7 @@ async def cmd_syncwith(ctx):
         return await ctx.error_reply("No group name provided!\n**Usage:** `syncwith <group>`.")
 
     # Check the author is in a group
-    current_timer = ctx.client.interface.get_timer_for(ctx.author.id)
+    current_timer = ctx.client.interface.get_timer_for(ctx.guild.id, ctx.author.id)
     if current_timer is None:
         return await ctx.error_reply("You can only sync a group you are a member of!")
 
