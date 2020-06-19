@@ -229,7 +229,7 @@ async def cmd_stop(ctx):
     Description:
         Stop the timer you are subscribed to.
     """
-    timer = ctx.client.interface.get_timer_for(ctx.guid.id, ctx.author.id)
+    timer = ctx.client.interface.get_timer_for(ctx.guild.id, ctx.author.id)
     if timer is None:
         tchan = ctx.client.interface.channels.get(ctx.ch.id, None)
         if tchan is None or not tchan.timers:
