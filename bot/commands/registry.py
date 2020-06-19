@@ -26,7 +26,7 @@ async def cmd_hist(ctx):
     sessions = ctx.client.interface.registry.get_sessions_where(userid=ctx.author.id, guildid=ctx.guild.id)
 
     # Get the current timer if it exists
-    timer = ctx.client.interface.get_timer_for(ctx.author.id)
+    timer = ctx.client.interface.get_timer_for(ctx.guild.id, ctx.author.id)
 
     # Quit if we don't have anything
     if not sessions and not timer:
@@ -182,9 +182,9 @@ async def cmd_lb(ctx):
             total_dict[session['userid']] = 0
         total_dict[session['userid']] += session['duration']
 
-    for userid in ctx.client.interface.subscribers:
-        sub_data = ctx.client.interface.subscribers[userid].session_data()
-        if sub_data[1] == ctx.guild.id:
+    for guildid, userid in ctx.client.interface.subscribers:
+        if guildid == ctx.guild.id:
+            sub_data = ctx.client.interface.subscribers[(guildid, userid)].session_data()
             if userid not in total_dict:
                 total_dict[userid] = 0
             total_dict[userid] += sub_data[4]
