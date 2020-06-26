@@ -286,11 +286,6 @@ class Timer(object):
                                                                                self.channel.mention,
                                                                                main_line)
                         )
-                    if out_msg is not None:
-                        try:
-                            await out_msg.add_reaction("✅")
-                        except Exception:
-                            pass
                 except discord.Forbidden:
                     pass
                 except discord.HTTPException:
@@ -361,8 +356,6 @@ class Timer(object):
             minutes = (diff % 3600) // 60
             seconds = diff % 60
             return "{:02d}:{:02d}:{:02d}".format(hours, minutes, seconds)
-
-
 
     def serialise(self):
         """
@@ -614,7 +607,7 @@ class TimerSubscriber(object):
         self.warnings = 0
 
     async def unsub(self):
-        return await self.interface.unsub(self.id)
+        return await self.interface.unsub(self.member.guild.id, self.id)
 
     def bump(self):
         self.last_seen = Timer.now()

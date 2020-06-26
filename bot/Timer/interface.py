@@ -152,7 +152,7 @@ class TimerInterface(object):
                         continue
 
                     subber = TimerSubscriber.deserialise(member, timer, self, sub_data)
-                    self.subscribers[member.id] = subber
+                    self.subscribers[(member.guild.id, member.id)] = subber
                     timer.subscribed[member.id] = subber
 
                     log("Restored subscriber {} (id {}) in timer {} (roleid {}) from save.".format(member.name,
@@ -198,19 +198,19 @@ class TimerInterface(object):
         if str(payload.emoji) != "✅":
             return
 
-        # Return if the user is already subscribed
-        if payload.user_id in self.subscribers:
-            return
-
-        # Quit if the user is the client
-        if payload.user_id == client.user.id:
-            return
-
         # Quit if the reaction is in DM or we can't see the guild
         if payload.guild_id is None:
             return
         guild = client.get_guild(payload.guild_id)
         if guild is None:
+            return
+
+        # Return if the member is already subscribed
+        if (payload.guild_id, payload.user_id) in self.subscribers:
+            return
+
+        # Quit if the user is the client
+        if payload.user_id == client.user.id:
             return
 
         # Get the timers in the current channel
@@ -303,11 +303,20 @@ class TimerInterface(object):
         timers.remove(tup)
         self.client.config.guilds.set(guild.id, "timers", timers)
 
-    def get_timer_for(self, memberid):
-        if memberid in self.subscribers:
-            return self.subscribers[memberid].timer
+    def get_timer_for(self, guildid, userid):
+        """
+        Retrieve timer for the given member, or None.
+        """
+        if (guildid, userid) in self.subscribers:
+            return self.subscribers[(guildid, userid)].timer
         else:
             return None
+
+    def get_subs_for(self, userid):
+        """
+        Retrieve all TimerSubscribers for the given userid.
+        """
+        return [value for (key, value) in self.subscribers.items() if key[1] == userid]
 
     def get_channel_timers(self, channelid):
         if channelid in self.channels:
@@ -323,11 +332,17 @@ class TimerInterface(object):
         while not self.ready:
             await asyncio.sleep(1)
 
-    def bump_user(self, userid, sourceid):
-        if userid in self.subscribers:
-            subber = self.subscribers[userid]
-            if sourceid == 0 or sourceid == subber.timer.channel.id:
-                subber.bump()
+    def bump_user(self, guildid, channelid, userid):
+        # Return if we are in a DM context
+        if guildid == 0:
+            return
+
+        # Grab the subscriber if it exists
+        subber = self.subscribers.get((guildid, userid), None)
+
+        # Bump the subscriber
+        if subber is not None and channelid == subber.timer.channel.id:
+            subber.bump()
 
     async def sub(self, ctx, member, timer):
         log("Subscribing user {} (uid: {}) to timer {} (rid: {})".format(member.name,
@@ -337,7 +352,7 @@ class TimerInterface(object):
             context="TIMER_INTERFACE")
 
         # Ensure that the user is not subscribed elsewhere
-        await self.unsub(member.id)
+        await self.unsub(member.guild.id, member.id)
 
         # Get the notify level
         notify = ctx.client.config.users.get(member.id, "notify_level")
@@ -355,21 +370,21 @@ class TimerInterface(object):
             await ctx.error_reply("Group role `{}` doesn't exist! This group is broken.".format(timer.role.id))
 
         timer.subscribed[member.id] = subber
-        self.subscribers[member.id] = subber
+        self.subscribers[(member.guild.id, member.id)] = subber
 
-    async def unsub(self, memberid):
+    async def unsub(self, guildid, userid):
         """
-        Unsubscribe a user from a timer, if they are subscribed.
+        Unsubscribe a member from a timer, if they are subscribed.
         Otherwise, do nothing.
         Return the session data for ease of access.
         """
-        subber = self.subscribers.get(memberid, None)
+        subber = self.subscribers.get((guildid, userid), None)
         if subber is not None:
             session = subber.session_data()
             subber.active = False
 
-            self.subscribers.pop(memberid)
-            subber.timer.subscribed.pop(memberid)
+            self.subscribers.pop((guildid, userid))
+            subber.timer.subscribed.pop(userid)
 
             try:
                 await subber.member.remove_roles(subber.timer.role)
