@@ -7,9 +7,11 @@ from Timer import TimerState, NotifyLevel
 
 from utils import timer_utils, interactive, ctx_addons  # noqa
 
+from presets import get_presets
+
 
 @cmd("join",
-     group="Timer",
+     group="T imer",
      desc="Join a group bound to the current channel.",
      aliases=['sub'])
 @in_guild()
@@ -87,7 +89,7 @@ async def cmd_join(ctx):
 
 
 @cmd("leave",
-     group="Timer",
+     group="T imer",
      desc="Leave your current group.",
      aliases=['unsub'])
 async def cmd_unsub(ctx):
@@ -144,6 +146,7 @@ async def cmd_set(ctx):
     Related:
         join, start
     """
+    # Get the timer we are acting on
     timer = ctx.client.interface.get_timer_for(ctx.guild.id, ctx.author.id)
     if timer is None:
         tchan = ctx.client.interface.channels.get(ctx.ch.id, None)
@@ -152,6 +155,8 @@ async def cmd_set(ctx):
         else:
             await ctx.error_reply("Please join a group first!")
         return
+
+    # If the timer is running, prompt for confirmation
     if timer.state == TimerState.RUNNING:
         if ctx.arg_str:
             if not await ctx.ask("The timer is running! Are you sure you want to reset it?"):
@@ -161,15 +166,32 @@ async def cmd_set(ctx):
                                  "This will reset the stage sequence to the default!"):
                 return
 
-    setupstr = ctx.arg_str or (
-        "Study, 25, Good luck!; Break, 5, Have a rest.;"
-        "Study, 25, Good luck!; Break, 5, Have a rest.;"
-        "Study, 25, Good luck!; Long Break, 10, Have a rest."
-    )
-    stages = ctx.client.interface.parse_setupstr(setupstr)
-
-    if stages is None:
-        return await ctx.error_reply("Didn't understand setup string!")
+    if not ctx.arg_str:
+        # Use the default setup string
+        # TODO: Customise defaults for different timers
+        setupstr = (
+            "Study, 25, Good luck!; Break, 5, Have a rest.;"
+            "Study, 25, Good luck!; Break, 5, Have a rest.;"
+            "Study, 25, Good luck!; Long Break, 10, Have a rest."
+        )
+        stages = ctx.client.interface.parse_setupstr(setupstr)
+    else:
+        # Parse the provided setup string
+        if "," in ctx.arg_str:
+            # Parse as a standard setup string
+            stages = ctx.client.interface.parse_setupstr(ctx.arg_str)
+            if stages is None:
+                return await ctx.error_reply("Didn't understand setup string!")
+        else:
+            # Parse as a preset
+            presets = get_presets(ctx)
+            if ctx.arg_str in presets:
+                stages = ctx.client.interface.parse_setupstr(presets[ctx.arg_str])
+            else:
+                return await ctx.error_reply(
+                    ("Didn't recognise the timer preset `{}`.\n"
+                     "Use the `presets` command to view available presets.").format(ctx.arg_str)
+                )
 
     timer.setup(stages)
     await ctx.reply("Timer pattern set up! Start when ready.")
