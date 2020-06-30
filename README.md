@@ -1,4 +1,4 @@
-Invite the public implementation [here](https://discordapp.com/oauth2/authorize?client_id=674238793431384067&scope=bot&permissions=271608912), and join the [support guild](https://discord.gg/MnMrQDe) if you have any questions or issues.
+Invite the public implementation [here](https://discordapp.com/oauth2/authorize?client_id=674238793431384067&scope=bot&permissions=271608912), and use it with the `,p` prefix. To see a list of commands, type `,phelp`. Join the [support guild](https://discord.gg/MnMrQDe) if you have any questions or issues.
 
 
 The Idea
