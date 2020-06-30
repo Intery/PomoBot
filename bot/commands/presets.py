@@ -121,14 +121,14 @@ async def cmd_preset(ctx):
         # Create the preset
         if preset_type == 0:
             guild_presets = ctx.client.config.guilds.get(ctx.guild.id, "timer_presets") or {}
-            if name in guild_presets and not await ctx.ask("Preset `{}` already exists, overwrite?"):
+            if name in guild_presets and not await ctx.ask("Preset `{}` already exists, overwrite?".format(name)):
                 return
             guild_presets[name] = setupstr
             ctx.client.config.guilds.set(ctx.guild.id, "timer_presets", guild_presets)
             await ctx.embedreply("Guild preset `{}` created.".format(name))
         elif preset_type == 1:
             personal_presets = ctx.client.config.users.get(ctx.author.id, "timer_presets") or {}
-            if name in personal_presets and not await ctx.ask("Preset `{}` already exists, overwrite?"):
+            if name in personal_presets and not await ctx.ask("Preset `{}` already exists, overwrite?".format(name)):
                 return
             personal_presets[name] = setupstr
             ctx.client.config.users.set(ctx.author.id, "timer_presets", personal_presets)

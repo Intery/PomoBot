@@ -11,7 +11,7 @@ from presets import get_presets
 
 
 @cmd("join",
-     group="T imer",
+     group="Timer",
      desc="Join a group bound to the current channel.",
      aliases=['sub'])
 @in_guild()
@@ -89,7 +89,7 @@ async def cmd_join(ctx):
 
 
 @cmd("leave",
-     group="T imer",
+     group="Timer",
      desc="Leave your current group.",
      aliases=['unsub'])
 async def cmd_unsub(ctx):
@@ -132,6 +132,7 @@ async def cmd_set(ctx):
     Usage``:
         set
         set <setup string>
+        set <presetname>
     Description:
         Setup the stages of the timer you are subscribed to.
         When used with no parameters, uses the following default setup string:
@@ -143,8 +144,10 @@ async def cmd_set(ctx):
         Stages are separated by semicolons,
         and are of the format `stage name, stage duration, stage message`.
         The `stage message` is optional.
+
+        See the `presets` command for more information on using setup presets.
     Related:
-        join, start
+        join, start, presets
     """
     # Get the timer we are acting on
     timer = ctx.client.interface.get_timer_for(ctx.guild.id, ctx.author.id)
