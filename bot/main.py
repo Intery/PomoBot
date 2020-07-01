@@ -13,7 +13,7 @@ __location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file
 
 # Load required data from configs
 masters = [int(master.strip()) for master in conf['masters'].split(",")]
-config = BotData(app="pomo", data_file="data/config_data.db")
+config = BotData(app="pomo", data_file="data/config_data.db", version=0)
 
 # Initialise the client
 client = cmdClient(prefix=conf['prefix'], owners=masters)

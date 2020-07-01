@@ -1,3 +1,5 @@
+import os
+from datetime import datetime
 import sqlite3 as sq
 import json
 
@@ -8,8 +10,47 @@ prop_table_info = [
 
 
 class BotData:
-    def __init__(self, app="", data_file="data.db"):
+    def __init__(self, app="", data_file="data.db", version=0):
+        to_create = not os.path.exists(data_file)
+
+        # Connect to database
         self.conn = sq.connect(data_file, timeout=20)
+
+        # Handle version checking
+        now = datetime.timestamp(datetime.utcnow())
+        cursor = self.conn.cursor()
+        version_columns = "version INTEGER NOT NULL, time INTEGER NOT NULL"
+        if to_create:
+            # Create version table
+            cursor.execute('CREATE TABLE VersionHistory ({})'.format(version_columns))
+
+            # Insert current version into table
+            cursor.execute('INSERT INTO VersionHistory VALUES ({}, {})'.format(version, now))
+            self.conn.commit()
+        else:
+            # Check if table exists
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='VersionHistory'")
+            version_exists = cursor.fetchone()
+            if not version_exists:
+                # Create version table
+                cursor.execute('CREATE TABLE VersionHistory ({})'.format(version_columns))
+
+                # Insert version 0 into table
+                cursor.execute('INSERT INTO VersionHistory VALUES (0, {})'.format(now))
+                self.conn.commit()
+
+            # Get last entry in version table, compare against desired version
+            cursor.execute("SELECT * FROM VersionHistory ORDER BY rowid DESC LIMIT 1")
+            current_version, _ = cursor.fetchone()
+
+            if current_version != version:
+                # Complain
+                raise Exception(
+                    ("Database version is {}, required version is {}. "
+                     "Please migrate database.").format(current_version, version)
+                )
+
+        # Load property tables
         for name, table_name, keys in prop_table_info:
             manipulator = _propTableManipulator(table_name, keys, self.conn, app)
             self.__setattr__(name, manipulator)
