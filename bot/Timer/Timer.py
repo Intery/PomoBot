@@ -179,7 +179,7 @@ class Timer(object):
             setup=stage_str
         )
 
-    async def change_stage(self, stage_index, notify=True, inactivity_check=True, report_old=True):
+    async def change_stage(self, stage_index, notify=True, inactivity_check=True, report_old=True, complete_old=True):
         """
         Advance the timer to the new stage.
         """
@@ -200,6 +200,8 @@ class Timer(object):
                     subber.warnings += 1
                     if subber.warnings >= self.max_warning:
                         needs_warning.append(subber)
+            if complete_old:
+                subber.participation.log(current_stage, partial_participation=subber.joined_new)
 
         # Handle not having any subscribers
         empty = (len(self.subscribed) == 0)
@@ -286,6 +288,11 @@ class Timer(object):
                                                                                self.channel.mention,
                                                                                main_line)
                         )
+                    if out_msg is not None:
+                        try:
+                            await out_msg.add_reaction("✅")
+                        except Exception:
+                            pass
                 except discord.Forbidden:
                     pass
                 except discord.HTTPException:
@@ -302,11 +309,12 @@ class Timer(object):
         """
         Start or restart the timer.
         """
-        await self.change_stage(0, report_old=False)
+        await self.change_stage(0, report_old=False, complete_old=False)
         self.state = TimerState.RUNNING
         for subber in self.subscribed.values():
             subber.touch()
             subber.active = True
+            subber.joined_new = False
 
         asyncio.ensure_future(self.runloop())
 
@@ -317,6 +325,7 @@ class Timer(object):
         for subber in self.subscribed.values():
             subber.touch()
             subber.active = False
+            subber.participation.log(self.stages[self.current_stage], partial_participation=True)
 
         self.state = TimerState.STOPPED
 
@@ -356,6 +365,8 @@ class Timer(object):
             minutes = (diff % 3600) // 60
             seconds = diff % 60
             return "{:02d}:{:02d}:{:02d}".format(hours, minutes, seconds)
+
+
 
     def serialise(self):
         """
@@ -571,6 +582,26 @@ class NotifyLevel(Enum):
         return NotImplemented
 
 
+class Participation(object):
+    def __init__(self, stages=None, data=''):
+        self.dict = {}
+        if data is not '':
+            for stage in data.split('#'):
+                self.dict.update({
+                    name: [int(partial), int(full), int(duration)]
+                    for name, partial, full, duration in [stage.split('|')]})
+        if stages is not None:
+            self.dict.update({stage.name: [0, 0, stage.duration] for stage in stages})
+
+    def log(self, stage, partial):
+        self.dict[stage.name][partial] += 1
+
+    def __str__(self):
+        return('#'.join(
+            ['{}|{}|{}|{}'.format(name, *data)
+             for name, data in self.dict.items()]))
+
+
 class TimerSubscriber(object):
     __slots__ = (
         'member',
@@ -584,7 +615,9 @@ class TimerSubscriber(object):
         'clocked_time',
         'active',
         'last_seen',
-        'warnings'
+        'warnings',
+        'participation',
+        'joined_new'
     )
 
     def __init__(self, member, timer, interface, notify=NotifyLevel.WARNING):
@@ -606,8 +639,11 @@ class TimerSubscriber(object):
         self.last_seen = now
         self.warnings = 0
 
+        self.participation = Participation(stages=timer.stages)
+        self.joined_new = True
+
     async def unsub(self):
-        return await self.interface.unsub(self.member.guild.id, self.id)
+        return await self.interface.unsub(self.id)
 
     def bump(self):
         self.last_seen = Timer.now()
@@ -632,7 +668,8 @@ class TimerSubscriber(object):
             self.member.guild.id,
             self.timer.role.id,
             self.time_joined,
-            self.clocked_time
+            self.clocked_time,
+            str(self.participation)
         )
 
     def serialise(self):
@@ -646,7 +683,8 @@ class TimerSubscriber(object):
             'clocked_time': self.clocked_time,
             'active': self.active,
             'last_seen': self.last_seen,
-            'warnings': self.warnings
+            'warnings': self.warnings,
+            'participation': str(self.participation)
         }
 
     @classmethod
@@ -660,5 +698,6 @@ class TimerSubscriber(object):
         self.notify = NotifyLevel(data['notify'])
         self.last_seen = data['last_seen']
         self.warnings = data['warnings']
+        self.participation = Participation(data=data['participation'])
 
         return self
