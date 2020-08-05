@@ -1,7 +1,11 @@
 import asyncio
 import datetime
+import logging
+import traceback
 import discord
 from enum import Enum
+
+from logger import log
 
 
 class Timer(object):
@@ -187,6 +191,10 @@ class Timer(object):
         current_stage = self.stages[self.current_stage]
         new_stage = self.stages[stage_index]
 
+        self.current_stage = stage_index
+        self.current_stage_start = self.now()
+        self.remaining = self.stages[stage_index].duration * 60
+
         # Update clocked times for all the subbed users and handle inactivity
         needs_warning = []
         unsubs = []
@@ -294,10 +302,6 @@ class Timer(object):
         for subber in unsubs:
             await subber.unsub()
 
-        self.current_stage = stage_index
-        self.current_stage_start = self.now()
-        self.remaining = self.stages[stage_index].duration * 60
-
     async def start(self):
         """
         Start or restart the timer.
@@ -328,7 +332,10 @@ class Timer(object):
                     await self.change_stage(self.current_stage + 1)
                     asyncio.ensure_future(self.update_clock_channel(force=True))
                 except Exception:
-                    pass
+                    full_traceback = traceback.format_exc()
+                    log("Exception encountered while changing stage.\n{}".format(full_traceback),
+                        context="TIMER_RUNLOOP",
+                        level=logging.ERROR)
 
             asyncio.ensure_future(self.update_clock_channel())
             await asyncio.sleep(1)
