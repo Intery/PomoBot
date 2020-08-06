@@ -7,7 +7,8 @@ class TimerRegistry(object):
         'guildid',
         'roleid',
         'starttime',
-        'duration'
+        'duration',
+        'participation'
     )
 
     def __init__(self, db_file):
@@ -25,7 +26,9 @@ class TimerRegistry(object):
                    "guildid INTEGER NOT NULL, "
                    "roleid INTEGER NOT NULL, "
                    "starttime INTEGER NOT NULL, "
-                   "duration INTEGER NOT NULL")
+                   "duration INTEGER NOT NULL, "
+                   "participation STRING")
+
 
         cursor.execute("CREATE TABLE IF NOT EXISTS sessions ({})".format(columns))
         self.conn.commit()
