@@ -201,7 +201,7 @@ class Timer(object):
                     if subber.warnings >= self.max_warning:
                         needs_warning.append(subber)
             if complete_old:
-                subber.participation.log(current_stage, partial_participation=subber.joined_new)
+                subber.participation.log(current_stage, partial=subber.joined_new)
 
         # Handle not having any subscribers
         empty = (len(self.subscribed) == 0)
@@ -325,7 +325,9 @@ class Timer(object):
         for subber in self.subscribed.values():
             subber.touch()
             subber.active = False
-            subber.participation.log(self.stages[self.current_stage], partial_participation=True)
+            if self.stages:
+                subber.participation.log(self.stages[self.current_stage],
+                                         partial=True)
 
         self.state = TimerState.STOPPED
 
@@ -583,13 +585,14 @@ class NotifyLevel(Enum):
 
 
 class Participation(object):
-    def __init__(self, stages=None, data=''):
+    def __init__(self, stages=None, data=None):
         self.dict = {}
-        if data is not '':
-            for stage in data.split('#'):
+        if data is not None:
+            for stage in data.split(';'):
+                print(stage)
                 self.dict.update({
                     name: [int(partial), int(full), int(duration)]
-                    for name, partial, full, duration in [stage.split('|')]})
+                    for name, partial, full, duration in [stage.split(',')]})
         if stages is not None:
             self.dict.update({stage.name: [0, 0, stage.duration] for stage in stages})
 
@@ -597,8 +600,8 @@ class Participation(object):
         self.dict[stage.name][partial] += 1
 
     def __str__(self):
-        return('#'.join(
-            ['{}|{}|{}|{}'.format(name, *data)
+        return(';'.join(
+            ['{},{},{},{}'.format(name, *data)
              for name, data in self.dict.items()]))
 
 

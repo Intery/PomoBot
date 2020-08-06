@@ -39,7 +39,7 @@ async def cmd_hist(ctx):
 
     # Build a sorted list of the author's sessions
     session_table = sorted(
-        [(sesh['starttime'], sesh['duration']) for sesh in sessions],
+        [(sesh['starttime'], sesh['duration'], sesh['participation']) for sesh in sessions],
         key=lambda tup: tup[0],
         reverse=True
     )
@@ -47,7 +47,7 @@ async def cmd_hist(ctx):
     # Add the current session if it exists
     if timer:
         sesh_data = timer.subscribed[ctx.author.id].session_data()
-        session_table.insert(0, (sesh_data[3], sesh_data[4]))
+        session_table.insert(0, (sesh_data[3], sesh_data[4], sesh_data[5]))
 
     # Build the map (date_string, [session strings])
     day_sessions = []
@@ -55,7 +55,7 @@ async def cmd_hist(ctx):
     current_offset = 0
     current_sessions = []
     current_total = 0
-    for start, dur in session_table:
+    for start, dur, participation in session_table:
         # Get current offset and corresponding session list
         date_offset = (today_ts - start) // (60 * 60 * 24) + 1
 
@@ -71,11 +71,16 @@ async def cmd_hist(ctx):
             current_total = 0
 
         # Generate the session string
-        sesh_str = "{} - {}  --  {}".format(
+        sesh_str = "{:<5} - {:<5}  --  {:<8}".format(
             dt.datetime.fromtimestamp(start).strftime("%H:%M"),
             dt.datetime.fromtimestamp(start + dur).strftime("%H:%M"),
             _parse_duration(dur)
         )
+        new_line = False
+        for stage in participation.split(";"):
+            sesh_str += new_line * ("\n" + 33 * " ") + (not new_line) * "  --  "
+            sesh_str += '{:<10.10}  {:>3} {:>3} {:>3}'.format(*stage.split(',')) if stage else "no stages completed"
+            new_line = True
         current_sessions.append(sesh_str)
 
         current_total += dur
@@ -99,6 +104,7 @@ async def cmd_hist(ctx):
             "```md\n"
             "{header}\n"
             "{header_rule}\n"
+            "{legend}\n"
             "{session_list}\n"
             "{total_rule}\n"
             "{total_str}"
@@ -106,6 +112,7 @@ async def cmd_hist(ctx):
         ).format(
             now=dt.datetime.utcnow().strftime("**%H:%M** on **%d %b %Y**"),
             header=header,
+            legend=u"start -  end   --  duration  --  Stage        🌕  🌓  ⏰",
             header_rule='=' * len(header),
             session_list='\n'.join(sessions),
             total_rule='+' + (len(total_str) - 2) * '-' + '+',
