@@ -108,7 +108,7 @@ async def cmd_unsub(ctx):
         )
 
     session = await ctx.client.interface.unsub(ctx.guild.id, ctx.author.id)
-    clocked = session[-1]
+    clocked = session[4]
 
     dur = int(clocked)
     hours = dur // 3600
