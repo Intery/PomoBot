@@ -13,6 +13,7 @@ from logger import log
 from .trackers import message_tracker, reaction_tracker
 from .Timer import Timer, TimerChannel, TimerSubscriber, TimerStage, NotifyLevel, TimerState
 from .registry import TimerRegistry
+from .voice import sub_on_vcjoin
 
 
 class TimerInterface(object):
@@ -49,6 +50,9 @@ class TimerInterface(object):
         client.add_after_event("message", message_tracker)
         client.add_after_event("raw_reaction_add", reaction_tracker)
         client.add_after_event("raw_reaction_add", self.reaction_sub)
+
+        # Voice event handlers
+        client.add_after_event("voice_state_update", sub_on_vcjoin)
 
     async def launch(self, client):
         if self.ready:
