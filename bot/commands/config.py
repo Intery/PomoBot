@@ -70,10 +70,11 @@ async def newgroup_interactive(ctx, name=None, role=None, channel=None, clock_ch
             name = await ctx.input("Please enter a friendly name for the new study group:")
         while role is None:
             role_str = await ctx.input(
-                "Please enter the study group role. "
+                "Please enter the study group role.\n"
                 "This role is given to people who join the group, "
-                "and is used for notifications. "
-                "The role must be mentionable, and I must have permission to give it to users.\n"
+                "and is used for notifications.\n"
+                "I must have permission to mention this role and give it to members. "
+                "Note that it must be below my highest role in the role list.\n"
                 "(Accepted input: Role name or partial name, role id, role mention, or `c` to cancel.)"
             )
             if role_str.lower() == 'c':
@@ -83,9 +84,10 @@ async def newgroup_interactive(ctx, name=None, role=None, channel=None, clock_ch
 
         while channel is None:
             channel_str = await ctx.input(
-                "Please enter the text channel to bind the group to. "
+                "Please enter the text channel to bind the group to.\n"
                 "The group will only be accessible from commands in this channel, "
                 "and the channel will host the pinned status message for this group.\n"
+                "I must have the `MANAGE_MESSAGES` permission in this channel to pin the status message.\n"
                 "(Accepted input: Channel name or partial name, channel id, channel mention, or `c` to cancel.)"
             )
             if channel_str.lower() == 'c':
@@ -99,12 +101,16 @@ async def newgroup_interactive(ctx, name=None, role=None, channel=None, clock_ch
 
         while clock_channel is None:
             clock_channel_str = await ctx.input(
-                "Please enter the group clock voice channel. "
-                "The name of this channel will be updated with the current stage and time remaining. "
-                "It is recommended that the channel only be visible to the study group role. "
-                "I must have permission to update the name of this channel.\n"
-                "(Accepted input: Channel name or partial name, channel id, channel mention, or `c` to cancel.)"
+                "Please enter the group voice channel, or `s` to continue without an associated voice channel.\n"
+                "The name of this channel will be updated with the current stage and time remaining, "
+                "and members who join the channel will automatically be subscribed to the study group.\n"
+                "I must have the `MANAGE_CHANNEL` permission in this channel to update the name.\n"
+                "(Accepted input: Channel name or partial name, channel id, channel mention, "
+                "or `s` to skip or `c` to cancel.)"
             )
+            if clock_channel_str.lower() == 's':
+                break
+
             if clock_channel_str.lower() == 'c':
                 raise UserCancelled
 

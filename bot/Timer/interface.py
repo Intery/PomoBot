@@ -95,9 +95,9 @@ class TimerInterface(object):
                 # Get the objects corresponding to the ids
                 role = guild.get_role(roleid)
                 channel = guild.get_channel(channelid)
-                clock_channel = guild.get_channel(clock_channelid)
+                clock_channel = guild.get_channel(clock_channelid) if clock_channelid != 0 else None
 
-                if role is None or channel is None or clock_channel is None:
+                if role is None or channel is None:
                     # This timer doesn't exist
                     # TODO: Handle garbage collection
                     continue
@@ -259,7 +259,10 @@ class TimerInterface(object):
 
         await ctx.ch.send(welcome)
 
-    def create_timer(self, group_name, group_role, bound_channel, clock_channel):
+    def create_timer(self, group_name, group_role, bound_channel, clock_channel=None):
+        """
+        Create a new timer, attach it to a timer channel, and save it to storage.
+        """
         guild = group_role.guild
 
         # Create the new timer
@@ -282,7 +285,12 @@ class TimerInterface(object):
 
         # Store the new timer in guild config
         timers = self.client.config.guilds.get(guild.id, "timers") or []
-        timers.append((group_name, group_role.id, bound_channel.id, clock_channel.id))
+        timers.append(
+            (group_name,
+             group_role.id,
+             bound_channel.id,
+             clock_channel.id if clock_channel else 0)
+        )
         self.client.config.guilds.set(guild.id, "timers", timers)
 
         return new_timer

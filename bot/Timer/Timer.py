@@ -12,7 +12,7 @@ class Timer(object):
     clock_period = 600
     max_warning = 1
 
-    def __init__(self, name, role, channel, clock_channel, stages=None):
+    def __init__(self, name, role, channel, clock_channel=None, stages=None):
         self.channel = channel
         self.clock_channel = clock_channel
         self.role = role
