@@ -151,7 +151,13 @@ class TimerInterface(object):
                     if guild is None:
                         continue
 
-                    member = guild.get_member(sub_data['id'])
+                    try:
+                        member = await guild.fetch_member(sub_data['id'])
+                    except discord.Forbidden:
+                        continue
+                    except discord.NotFound:
+                        continue
+
                     if member is None:
                         continue
 
