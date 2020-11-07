@@ -62,7 +62,7 @@ async def cmd_addgrp(ctx):
 
 async def newgroup_interactive(ctx, name=None, role=None, channel=None, clock_channel=None):
     """
-    Interactivly create a new study group.
+    Interactively create a new study group.
     Takes keyword arguments to use any pre-existing data.
     """
     try:
@@ -73,9 +73,12 @@ async def newgroup_interactive(ctx, name=None, role=None, channel=None, clock_ch
                 "Please enter the study group role. "
                 "This role is given to people who join the group, "
                 "and is used for notifications. "
-                "It needs to be mentionable, and I need permission to give it to users.\n"
-                "(Accepted input: Role name or partial name, role id, or role mention.)"
+                "The role must be mentionable, and I must have permission to give it to users.\n"
+                "(Accepted input: Role name or partial name, role id, role mention, or `c` to cancel.)"
             )
+            if role_str.lower() == 'c':
+                raise UserCancelled
+
             role = await ctx.find_role(role_str.strip(), interactive=True)
 
         while channel is None:
@@ -83,9 +86,16 @@ async def newgroup_interactive(ctx, name=None, role=None, channel=None, clock_ch
                 "Please enter the text channel to bind the group to. "
                 "The group will only be accessible from commands in this channel, "
                 "and the channel will host the pinned status message for this group.\n"
-                "(Accepted input: Channel name or partial name, channel id or channel mention.)"
+                "(Accepted input: Channel name or partial name, channel id, channel mention, or `c` to cancel.)"
             )
-            channel = await ctx.find_channel(channel_str.strip(), interactive=True)
+            if channel_str.lower() == 'c':
+                raise UserCancelled
+
+            channel = await ctx.find_channel(
+                channel_str.strip(),
+                interactive=True,
+                chan_type=discord.ChannelType.text
+            )
 
         while clock_channel is None:
             clock_channel_str = await ctx.input(
@@ -93,8 +103,11 @@ async def newgroup_interactive(ctx, name=None, role=None, channel=None, clock_ch
                 "The name of this channel will be updated with the current stage and time remaining. "
                 "It is recommended that the channel only be visible to the study group role. "
                 "I must have permission to update the name of this channel.\n"
-                "(Accepted input: Channel name or partial name, channel id or channel mention.)"
+                "(Accepted input: Channel name or partial name, channel id, channel mention, or `c` to cancel.)"
             )
+            if clock_channel_str.lower() == 'c':
+                raise UserCancelled
+
             clock_channel = await ctx.find_channel(
                 clock_channel_str.strip(),
                 interactive=True,
@@ -102,7 +115,7 @@ async def newgroup_interactive(ctx, name=None, role=None, channel=None, clock_ch
             )
     except UserCancelled:
         raise UserCancelled(
-            "User cancelled during group creationa! "
+            "User cancelled during group creation! "
             "No group was created."
         ) from None
     except ResponseTimedOut:
