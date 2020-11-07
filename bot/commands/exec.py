@@ -27,7 +27,7 @@ async def cmd_reboot(ctx):
     Description:
         Update the timer status save file and reboot the client.
     """
-    ctx.client.interface.update_save()
+    ctx.client.interface.update_save("reboot")
     await ctx.reply("Saved state. Rebooting now!")
     await ctx.client.logout()
 

@@ -175,7 +175,7 @@ class TimerInterface(object):
                     except discord.Forbidden:
                         continue
 
-    def update_save(self):
+    def update_save(self, save_name="autosave"):
         # Generate save dict
         timers = [timer for channel in self.channels.values() for timer in channel.timers]
         timer_data = [timer.serialise() for timer in timers if timer.stages]
@@ -188,6 +188,10 @@ class TimerInterface(object):
             'timer_channels': tchan_data
         }
         data_str = json.dumps(data)
+
+        # Backup the save file
+        if os.path.exists(self.save_fp):
+            os.replace(self.save_fp, "{}.{}.old".format(self.save_fp, save_name))
 
         with open(self.save_fp, 'w') as f:
             f.write(data_str)
