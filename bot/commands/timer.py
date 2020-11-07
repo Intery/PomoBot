@@ -70,6 +70,8 @@ async def cmd_join(ctx):
 
     # Reply with the join message
     message = "You have joined the group **{}**{}!".format(timer.name, chan_info)
+    if ctx.author.bot:
+        message += " Good luck, colleague!"
     if timer.state == TimerState.RUNNING:
         message += "\nCurrently on stage **{}** with **{}** remaining. {}".format(
             timer.stages[timer.current_stage].name,

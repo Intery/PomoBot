@@ -12,6 +12,10 @@ async def sub_on_vcjoin(client, member, before, after):
     if before.channel is None and after.channel is not None:
         # Join voice channel event
 
+        # Quit if the member is a bot
+        if member.bot:
+            return
+
         # Quit if the member is already subscribed
         if (member.guild.id, member.id) in client.interface.subscribers:
             return
