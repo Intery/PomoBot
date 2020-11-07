@@ -16,3 +16,11 @@ async def timer_admin(ctx, *args, **kwargs):
         return False
 
     return roleid in [r.id for r in ctx.author.roles]
+
+
+@check(
+    name="TIMER_READY",
+    msg="I am restarting! Please try again in a moment."
+)
+async def timer_ready(ctx, *args, **kwargs):
+    return ctx.client.interface.ready

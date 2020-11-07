@@ -4,7 +4,7 @@ from cmdClient import cmd
 from cmdClient.lib import ResponseTimedOut, UserCancelled
 from cmdClient.checks import in_guild
 
-from wards import timer_admin
+from wards import timer_admin, timer_ready
 from utils import seekers, ctx_addons, timer_utils  # noqa
 # from Timer import create_timer
 
@@ -13,6 +13,7 @@ from utils import seekers, ctx_addons, timer_utils  # noqa
      group="Configuration",
      desc="Create a new timer group.")
 @in_guild()
+@timer_ready()
 @timer_admin()
 async def cmd_addgrp(ctx):
     """
@@ -138,6 +139,7 @@ async def newgroup_interactive(ctx, name=None, role=None, channel=None, clock_ch
      group="Configuration",
      desc="Remove a timer group.")
 @in_guild()
+@timer_ready()
 @timer_admin()
 async def cmd_delgrp(ctx):
     """

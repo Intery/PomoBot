@@ -7,6 +7,8 @@ from Timer import TimerState, NotifyLevel
 
 from utils import timer_utils, interactive, ctx_addons  # noqa
 
+from wards import timer_ready
+
 from presets import get_presets
 
 
@@ -15,6 +17,7 @@ from presets import get_presets
      desc="Join a group bound to the current channel.",
      aliases=['sub'])
 @in_guild()
+@timer_ready()
 async def cmd_join(ctx):
     """
     Usage``:
@@ -92,6 +95,8 @@ async def cmd_join(ctx):
      group="Timer",
      desc="Leave your current group.",
      aliases=['unsub'])
+@in_guild()
+@timer_ready()
 async def cmd_unsub(ctx):
     """
     Usage``:
@@ -127,6 +132,8 @@ async def cmd_unsub(ctx):
      group="Timer",
      desc="Setup the stages of a group timer.",
      aliases=['setup', 'reset'])
+@in_guild()
+@timer_ready()
 async def cmd_set(ctx):
     """
     Usage``:
@@ -204,6 +211,8 @@ async def cmd_set(ctx):
      group="Timer",
      desc="Start your timer.",
      aliases=["restart"])
+@in_guild()
+@timer_ready()
 async def cmd_start(ctx):
     """
     Usage``:
@@ -247,6 +256,8 @@ async def cmd_start(ctx):
 @cmd("stop",
      group="Timer",
      desc="Stop your timer.")
+@in_guild()
+@timer_ready()
 async def cmd_stop(ctx):
     """
     Usage``:
@@ -279,6 +290,7 @@ async def cmd_stop(ctx):
      desc="View the guild's groups.",
      aliases=["timers"])
 @in_guild()
+@timer_ready()
 async def cmd_groups(ctx):
     # Handle there being no timers
     if not ctx.client.interface.get_guild_timers(ctx.guild.id):
@@ -316,6 +328,7 @@ async def cmd_groups(ctx):
      desc="View detailed information about a group.",
      aliases=["group", "timer"])
 @in_guild()
+@timer_ready()
 async def cmd_group(ctx):
     """
     Usage``:
@@ -429,6 +442,8 @@ async def cmd_notify(ctx):
 @cmd("rename",
      group="Timer",
      desc="Rename your group.")
+@in_guild()
+@timer_ready()
 async def cmd_rename(ctx):
     """
     Usage``:
@@ -458,6 +473,7 @@ async def cmd_rename(ctx):
      group="Timer",
      desc="Sync the start of your group timer with another group")
 @in_guild()
+@timer_ready()
 async def cmd_syncwith(ctx):
     """
     Usage``:
