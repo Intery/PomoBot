@@ -17,6 +17,12 @@ async def sub_on_vcjoin(client, member, before, after):
             return
 
         guild_timers = client.interface.get_guild_timers(member.guild.id)
+
+        # Quit if there are no groups in this guild
+        if not guild_timers:
+            return
+
+        # Get the collection of clocks in the guild
         guild_clocks = {timer.clock_channel.id: timer for timer in guild_timers if timer.clock_channel is not None}
 
         # Quit if the voice channel is not a clock channel, otherwise get the related timer

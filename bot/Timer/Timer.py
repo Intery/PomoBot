@@ -531,17 +531,31 @@ class TimerChannel(object):
             elif any(timer.state != TimerState.STOPPED for timer in self.timers):
                 # Attempt to generate a new message
                 try:
+                    # Send a new message
                     self.msg = await self.channel.send(embed=embed)
+
+                    # Pin the message
+                    try:
+                        await self.msg.pin()
+                    except Exception:
+                        pass
                 except discord.Forbidden:
-                    await self.channel.send("I require permission to send embeds in this channel! Stopping all timers.")
+                    try:
+                        await self.channel.send(
+                            "I require permission to send embeds in this channel! "
+                            "Stopping all timers."
+                        )
+                    except Exception:
+                        # There's no point trying to handle this if we can't send anything, just quietly unload
+                        pass
+
                     for timer in self.timers:
                         timer.stop()
-
-                # Pin the message
-                try:
-                    await self.msg.pin()
-                except Exception:
-                    pass
+                except discord.NotFound:
+                    # The channel doesn't even exist anymore! Stop all timers so we don't try to post anymore.
+                    # TODO: Handle garbage collection, cautiously because this might be an outage
+                    for timer in self.timers:
+                        timer.stop()
 
 
 class NotifyLevel(Enum):
