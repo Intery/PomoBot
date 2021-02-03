@@ -66,13 +66,15 @@ class TimerInterface(object):
 
     async def updateloop(self):
         while True:
-            for tchan in self.channels.values():
+            channels = self.channels.values()
+            delay = max((0.1, 60/len(channels)))
+
+            for tchan in channels:
                 asyncio.ensure_future(tchan.update())
+                await asyncio.sleep(delay)
 
             if Timer.now() - self.last_save > self.save_interval:
                 self.update_save()
-
-            await asyncio.sleep(5)
 
     def load_timers(self):
         client = self.client

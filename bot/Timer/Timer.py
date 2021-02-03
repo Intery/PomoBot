@@ -73,12 +73,11 @@ class Timer(object):
 
         # Get the name and time strings
         stage_name = self.stages[self.current_stage].name
-        remaining_time = self.pretty_remaining(show_seconds=True)
 
         # Update the channel name, or quit silently if something goes wrong.
         self.last_clockupdate = self.now()
         try:
-            await self.clock_channel.edit(name="{} - {}".format(stage_name, remaining_time))
+            await self.clock_channel.edit(name="{} - {}".format(self.name, stage_name))
             self.last_clockupdate = self.now()
         except Exception:
             pass
@@ -337,7 +336,8 @@ class Timer(object):
                         context="TIMER_RUNLOOP",
                         level=logging.ERROR)
 
-            asyncio.ensure_future(self.update_clock_channel())
+            # Disable clock update since the channel update ratelimit is too slow
+            # asyncio.ensure_future(self.update_clock_channel())
             await asyncio.sleep(1)
 
     @staticmethod
