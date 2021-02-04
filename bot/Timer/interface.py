@@ -326,7 +326,7 @@ class TimerInterface(object):
         # Update the guild timer config
         guild = timer.channel.guild
         timers = self.client.config.guilds.get(guild.id, "timers") or []
-        tup = next(tup for tup in timers if tup[0] == timer.name and tup[1] == timer.role.id)
+        tup = next(tup for tup in timers if tup[0] == timer._truename and tup[1] == timer.role.id)
         timers.remove(tup)
         self.client.config.guilds.set(guild.id, "timers", timers)
 

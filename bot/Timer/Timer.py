@@ -17,6 +17,7 @@ class Timer(object):
         self.clock_channel = clock_channel
         self.role = role
         self.name = name
+        self._truename = name
 
         self.start_time = None  # Session start time
         self.current_stage_start = None  # Time at which the current stage started
