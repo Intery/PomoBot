@@ -319,6 +319,9 @@ class TimerInterface(object):
         tchan = self.channels.get(timer.channel.id, None)
         if tchan is not None:
             tchan.timers.remove(timer)
+            # Cleanup if the channel has no remaining timers
+            if len(tchan.timers) == 0:
+                self.channels.pop(timer.channel.id)
 
         # Update the guild timer config
         guild = timer.channel.guild

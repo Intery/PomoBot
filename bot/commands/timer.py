@@ -310,13 +310,14 @@ async def cmd_groups(ctx):
         # Build the embed description
         sections = []
         for tchan in ctx.client.interface.guild_channels[ctx.guild.id]:
-            sections.append("{}\n\n{}".format(
-                tchan.channel.mention,
-                "\n\n".join(timer.pretty_summary() for timer in tchan.timers)
-            ))
+            if len(tchan.timers) > 0:
+                sections.append("{}\n\n{}".format(
+                    tchan.channel.mention,
+                    "\n\n".join(timer.pretty_summary() for timer in tchan.timers)
+                ))
 
         embed = discord.Embed(
-            description="\n\n\n".join(sections),
+            description="\n\n\n".join(sections) or "No timers in this guild!",
             colour=discord.Colour(0x9b59b6),
             title="Group timers in this guild"
         )
@@ -453,7 +454,7 @@ async def cmd_rename(ctx):
     Description:
         Set the name of your current group to `groupname`.
     Arguments::
-        groupname: The new name for your group, less than `20` charachters long.
+        groupname: The new name for your group, less than `20` characters long.
     Related:
         join, status, groups
     """
