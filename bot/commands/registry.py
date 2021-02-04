@@ -30,7 +30,7 @@ async def cmd_hist(ctx):
 
     # Quit if we don't have anything
     if not sessions and not timer:
-        return ctx.reply("You have not completed any timer sessions!")
+        return await ctx.reply("You have not completed any timer sessions!")
 
     # Get today's date and timestamp
     today = dt.datetime.utcnow().date()
