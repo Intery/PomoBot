@@ -227,4 +227,7 @@ async def cmd_lb(ctx):
         pages.append(page)
 
     await out_msg.delete()
+    if not pages:
+        return await ctx.reply("No entries exist in the given range!")
+
     await ctx.pager(pages, locked=False)
