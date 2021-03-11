@@ -40,7 +40,7 @@ async def cmd_help(ctx):
     """
     if ctx.arg_str:
         # Attempt to fetch the command
-        command = ctx.client.cmd_cache.get(ctx.arg_str.strip(), None)
+        command = ctx.client.cmd_names.get(ctx.arg_str.strip(), None)
         if command is None:
             return await ctx.error_reply(
                 ("Command `{}` not found!\n"
@@ -79,7 +79,7 @@ async def cmd_help(ctx):
                 # Handle the related field
                 names = [cmd_name.strip() for cmd_name in help_fields[pos][1].split(',')]
                 names.sort(key=len)
-                values = [getattr(ctx.client.cmd_cache.get(cmd_name, None), 'desc', "") for cmd_name in names]
+                values = [getattr(ctx.client.cmd_names.get(cmd_name, None), 'desc', "") for cmd_name in names]
                 help_fields[pos] = (
                     name,
                     prop_tabulate(names, values)
