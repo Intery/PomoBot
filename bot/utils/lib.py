@@ -47,7 +47,7 @@ def paginate_list(item_list, block_length=20, style="markdown", title=None):
         List of pages, each formatted into a codeblock,
         and containing at most `block_length` of the provided strings.
     """
-    lines = ["{0:<5}{1:<5}".format("{}.".format(i + 1), str(line)) for i, line in enumerate(item_list)]
+    lines = ["{0:<5}{1:<5}".format("{}. ".format(i + 1), str(line)) for i, line in enumerate(item_list)]
     page_blocks = [lines[i:i + block_length] for i in range(0, len(lines), block_length)]
     pages = []
     for i, block in enumerate(page_blocks):
