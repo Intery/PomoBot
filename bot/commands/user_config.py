@@ -41,4 +41,4 @@ async def cmd_notify(ctx):
     Accepted Values:
         {ctx.author_settings.settings.notify_level.accepted_table}
     """
-    await UserSettings.notify_level.command(ctx, ctx.author.id)
+    await UserSettings.settings.notify_level.command(ctx, ctx.author.id)
