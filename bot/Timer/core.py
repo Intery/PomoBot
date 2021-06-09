@@ -445,7 +445,7 @@ class Timer:
         except discord.Forbidden:
             # We are not allowed to send to the timer channel
             # Stop the timer
-            await self.stop()
+            self.stop()
         except discord.HTTPException:
             # An unknown discord error occured
             # Silently continue
@@ -836,7 +836,7 @@ class Timer:
                         context="rid:{}".format(self.role.id),
                         level=logging.ERROR,
                         add_exc_info=True)
-            elif remaining > 600:
+            elif remaining > 600 and self.subscribers:
                 await self.update_voice()
 
             self._loop_wait_task = asyncio.create_task(asyncio.sleep(min(600, remaining)))
