@@ -76,7 +76,7 @@ async def cmd_tconfig(ctx):
             timer = await ctx.get_timers_matching(maybe_name, channel_only=False, info=True)
             if not timer:
                 return await ctx.error_reply("No groups found matching `{}`.".format(maybe_name))
-            if len(splits) > 1:
+            if len(splits) > 1 and splits[1]:
                 remaining_splits = splits[1].split(maxsplit=1)
                 setting = setting_displaynames.get(remaining_splits[0].lower(), None)
                 if setting is None:
