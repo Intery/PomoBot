@@ -20,7 +20,7 @@ from wards import timer_admin, timer_ready
 @timer_ready()
 async def cmd_newgroup(ctx: Context, flags):
     """
-    Usage:``
+    Usage``:
         {prefix}newgroup <group-name> [flags]
     Description:
         Create a new study group (also called a timer) in the guild.
@@ -232,7 +232,7 @@ async def cmd_newgroup(ctx: Context, flags):
 @timer_ready()
 async def cmd_delgroup(ctx):
     """
-    Usage:``
+    Usage``:
         {prefix}delgroup <group-name>
     Description:
         Delete a guild study group.
