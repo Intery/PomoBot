@@ -21,6 +21,11 @@ async def cmd_forcekick(ctx):
     Examples``:
         {prefix}forcekick {ctx.author.name}
     """
+    if not ctx.args:
+        return await ctx.error_reply(
+            "**Usage:** `{}forcekick <user>`\n"
+            "Please provided a user to kick.".format(ctx.best_prefix)
+        )
     subscribers = [
         sub for timer in ctx.timers.get_timers_in(ctx.guild.id) for sub in timer.subscribers.values()
     ]
