@@ -192,7 +192,7 @@ class Setting:
             await ctx.reply(embed=cls.get(id).embed)
         else:
             # Check the write ward
-            if not await cls.write_ward.run(ctx):
+            if cls.write_ward and not await cls.write_ward.run(ctx):
                 await ctx.error_reply(cls.msg)
             else:
                 # Attempt to set config cls
