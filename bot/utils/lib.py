@@ -1,4 +1,5 @@
 import datetime
+import pytz
 
 
 def prop_tabulate(prop_list, value_list):
@@ -65,4 +66,13 @@ def timestamp_utcnow():
     """
     Return the current integer UTC timestamp.
     """
-    return int(datetime.datetime.timestamp(datetime.datetime.utcnow()))
+    return int(datetime.datetime.now(tz=pytz.utc).timestamp())
+
+
+class DotDict(dict):
+    """
+    Dict-type allowing dot access to keys.
+    """
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__

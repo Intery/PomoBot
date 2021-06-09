@@ -1,6 +1,7 @@
-# Data file
+# Data files
 *.db
-data/*
+*.pickle
+*.json
 
 # Conf files
 *.conf

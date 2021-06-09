@@ -5,6 +5,62 @@ from cmdClient.lib import UserCancelled, ResponseTimedOut
 
 from .lib import paginate_list
 
+# TODO: Interactive locks
+cancel_emoji = '❌'
+number_emojis = (
+    '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'
+)
+
+
+async def discord_shield(coro):
+    try:
+        await coro
+    except discord.HTTPException:
+        pass
+
+
+@Context.util
+async def cancellable(ctx, msg, add_reaction=True, cancel_message=None, timeout=300):
+    """
+    Add a cancellation reaction to the given message.
+    Pressing the reaction triggers cancellation of the original context, and a UserCancelled-style error response.
+    """
+    # TODO: Not consistent with the exception driven flow, make a decision here?
+    # Add reaction
+    if add_reaction and cancel_emoji not in (str(r.emoji) for r in msg.reactions):
+        try:
+            await msg.add_reaction(cancel_emoji)
+        except discord.HTTPException:
+            return
+
+    # Define cancellation function
+    async def _cancel():
+        try:
+            await ctx.client.wait_for(
+                'reaction_add',
+                timeout=timeout,
+                check=lambda r, u: (u == ctx.author
+                                    and r.message == msg
+                                    and str(r.emoji) == cancel_emoji)
+            )
+        except asyncio.TimeoutError:
+            pass
+        else:
+            await ctx.client.active_command_response_cleaner(ctx)
+            if cancel_message:
+                await ctx.error_reply(cancel_message)
+            else:
+                try:
+                    await ctx.msg.add_reaction(cancel_emoji)
+                except discord.HTTPException:
+                    pass
+            [task.cancel() for task in ctx.tasks]
+
+    # Launch cancellation task
+    task = asyncio.create_task(_cancel())
+    ctx.tasks.append(task)
+    return task
+
 
 @Context.util
 async def listen_for(ctx, allowed_input=None, timeout=120, lower=True, check=None):
@@ -94,40 +150,72 @@ async def selector(ctx, header, select_from, timeout=120, max_len=20):
         raise ValueError("Selection list passed to `selector` cannot be empty.")
 
     # Generate the selector pages
-    footer = "Please type the number corresponding to your selection, or type `c` now to cancel."
+    footer = "Please reply with the number of your selection, or press {} to cancel.".format(cancel_emoji)
     list_pages = paginate_list(select_from, block_length=max_len)
     pages = ["\n".join([header, page, footer]) for page in list_pages]
 
     # Post the pages in a paged message
-    out_msg = await ctx.pager(pages)
+    out_msg = await ctx.pager(pages, add_cancel=True)
+    cancel_task = await ctx.cancellable(out_msg, add_reaction=False, timeout=None)
 
-    # Listen for valid input
+    if len(select_from) <= 5:
+        for i, _ in enumerate(select_from):
+            asyncio.create_task(discord_shield(out_msg.add_reaction(number_emojis[i])))
+
+    # Build response tasks
     valid_input = [str(i+1) for i in range(0, len(select_from))] + ['c', 'C']
-    try:
-        result_msg = await ctx.listen_for(valid_input, timeout=timeout)
-    except ResponseTimedOut:
-        raise ResponseTimedOut("Selector timed out waiting for a response.")
+    listen_task = asyncio.create_task(ctx.listen_for(valid_input, timeout=None))
+    emoji_task = asyncio.create_task(ctx.client.wait_for(
+        'reaction_add',
+        check=lambda r, u: (u == ctx.author
+                            and r.message == out_msg
+                            and str(r.emoji) in number_emojis)
+    ))
+    # Wait for the response tasks
+    done, pending = await asyncio.wait(
+        (listen_task, emoji_task),
+        timeout=timeout,
+        return_when=asyncio.FIRST_COMPLETED
+    )
 
-    # Try and delete the selector message and the user response.
+    # Cleanup
     try:
         await out_msg.delete()
-        await result_msg.delete()
-    except discord.NotFound:
-        pass
-    except discord.Forbidden:
+    except discord.HTTPException:
         pass
 
-    # Handle user cancellation
-    if result_msg.content in ['c', 'C']:
-        raise UserCancelled("User cancelled selection.")
+    # Handle different return cases
+    if listen_task in done:
+        emoji_task.cancel()
 
-    # The content must now be a valid index. Collect and return it.
-    index = int(result_msg.content) - 1
-    return index
+        result_msg = listen_task.result()
+        try:
+            await result_msg.delete()
+        except discord.HTTPException:
+            pass
+        if result_msg.content.lower() == 'c':
+            raise UserCancelled("Selection cancelled!")
+        result = int(result_msg.content) - 1
+    elif emoji_task in done:
+        listen_task.cancel()
+
+        reaction, _ = emoji_task.result()
+        result = number_emojis.index(str(reaction.emoji))
+    elif cancel_task in done:
+        # Manually cancelled case.. the current task should have been cancelled
+        # Raise UserCancelled in case the task wasn't cancelled for some reason
+        raise UserCancelled("Selection cancelled!")
+    elif not done:
+        # Timeout case
+        raise ResponseTimedOut("Selector timed out waiting for a response.")
+
+    # Finally cancel the canceller and return the provided index
+    cancel_task.cancel()
+    return result
 
 
 @Context.util
-async def pager(ctx, pages, locked=True, **kwargs):
+async def pager(ctx, pages, locked=True, start_at=0, add_cancel=False, **kwargs):
     """
     Shows the user each page from the provided list `pages` one at a time,
     providing reactions to page back and forth between pages.
@@ -150,25 +238,28 @@ async def pager(ctx, pages, locked=True, **kwargs):
         raise ValueError("Pager cannot page with no pages!")
 
     # Post first page. Method depends on whether the page is an embed or not.
-    if isinstance(pages[0], discord.Embed):
-        out_msg = await ctx.reply(embed=pages[0])
+    if isinstance(pages[start_at], discord.Embed):
+        out_msg = await ctx.reply(embed=pages[start_at], **kwargs)
     else:
-        out_msg = await ctx.reply(pages[0])
+        out_msg = await ctx.reply(pages[start_at], **kwargs)
 
     # Run the paging loop if required
     if len(pages) > 1:
-        asyncio.ensure_future(_pager(ctx, out_msg, pages, locked))
+        task = asyncio.create_task(_pager(ctx, out_msg, pages, locked, start_at, add_cancel, **kwargs))
+        ctx.tasks.append(task)
+    elif add_cancel:
+        await out_msg.add_reaction(cancel_emoji)
 
     # Return the output message
     return out_msg
 
 
-async def _pager(ctx, out_msg, pages, locked):
+async def _pager(ctx, out_msg, pages, locked, start_at, add_cancel, **kwargs):
     """
     Asynchronous initialiser and loop for the `pager` utility above.
     """
     # Page number
-    page = 0
+    page = start_at
 
     # Add reactions to the output message
     next_emoji = "▶"
@@ -176,7 +267,9 @@ async def _pager(ctx, out_msg, pages, locked):
 
     try:
         await out_msg.add_reaction(prev_emoji)
-        await out_msg.add_reaction( next_emoji)
+        if add_cancel:
+            await out_msg.add_reaction(cancel_emoji)
+        await out_msg.add_reaction(next_emoji)
     except discord.Forbidden:
         # We don't have permission to add paging emojis
         # Die as gracefully as we can
@@ -209,9 +302,9 @@ async def _pager(ctx, out_msg, pages, locked):
         # Edit the message with the new page
         active_page = pages[page]
         if isinstance(active_page, discord.Embed):
-            await out_msg.edit(embed=active_page)
+            await out_msg.edit(embed=active_page, **kwargs)
         else:
-            await out_msg.edit(content=active_page)
+            await out_msg.edit(content=active_page, **kwargs)
 
     # Clean up by removing the reactions
     try:
@@ -224,6 +317,7 @@ async def _pager(ctx, out_msg, pages, locked):
             pass
     except discord.NotFound:
         pass
+
 
 @Context.util
 async def input(ctx, msg="", timeout=120):

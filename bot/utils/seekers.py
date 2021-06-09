@@ -1,10 +1,12 @@
+import discord
+
 from cmdClient import Context
-from cmdClient.lib import InvalidContext, UserCancelled, ResponseTimedOut
+from cmdClient.lib import InvalidContext, UserCancelled, ResponseTimedOut, SafeCancellation
 from . import interactive
 
 
 @Context.util
-async def find_role(ctx, userstr, interactive=False, collection=None):
+async def find_role(ctx, userstr, create=False, interactive=False, collection=None, allow_notfound=True):
     """
     Find a guild role given a partial matching string,
     allowing custom role collections and several behavioural switches.
@@ -14,12 +16,18 @@ async def find_role(ctx, userstr, interactive=False, collection=None):
     userstr: str
         String obtained from a user, expected to partially match a role in the collection.
         The string will be tested against both the id and the name of the role.
+    create: bool
+        Whether to offer to create the role if it does not exist.
+        The bot will only offer to create the role if it has the `manage_channels` permission.
     interactive: bool
         Whether to offer the user a list of roles to choose from,
         or pick the first matching role.
-    collection: List(discord.Role)
+    collection: List[Union[discord.Role, discord.Object]]
         Collection of roles to search amongst.
         If none, uses the guild role list.
+    allow_notfound: bool
+        Whether to return `None` when there are no matches, instead of raising `SafeCancellation`.
+        Overriden by `create`, if it is set.
 
     Returns
     -------
@@ -34,6 +42,8 @@ async def find_role(ctx, userstr, interactive=False, collection=None):
         If the user cancels interactive role selection.
     cmdClient.lib.ResponseTimedOut:
         If the user fails to respond to interactive role selection within `60` seconds`
+    cmdClient.lib.SafeCancellation:
+        If `allow_notfound` is `False`, and the search returned no matches.
     """
     # Handle invalid situations and input
     if not ctx.guild:
@@ -43,10 +53,11 @@ async def find_role(ctx, userstr, interactive=False, collection=None):
         raise ValueError("User string passed to find_role was empty.")
 
     # Create the collection to search from args or guild roles
-    collection = collection if collection else ctx.guild.roles
+    collection = collection if collection is not None else ctx.guild.roles
 
     # If the unser input was a number or possible role mention, get it out
-    roleid = userstr.strip('<#@&!>')
+    userstr = userstr.strip()
+    roleid = userstr.strip('<#@&!> ')
     roleid = int(roleid) if roleid.isdigit() else None
     searchstr = userstr.lower()
 
@@ -69,8 +80,10 @@ async def find_role(ctx, userstr, interactive=False, collection=None):
     else:
         # We have multiple matching roles!
         if interactive:
-            # Interactive prompt with the list of roles
-            role_names = [role.name for role in roles]
+            # Interactive prompt with the list of roles, handle `Object`s
+            role_names = [
+                role.name if isinstance(role, discord.Role) else str(role.id) for role in roles
+            ]
 
             try:
                 selected = await ctx.selector(
@@ -88,8 +101,35 @@ async def find_role(ctx, userstr, interactive=False, collection=None):
             # Just select the first one
             role = roles[0]
 
+    # Handle non-existence of the role
     if role is None:
-        await ctx.error_reply("Couldn't find a role matching `{}`!".format(userstr))
+        msgstr = "Couldn't find a role matching `{}`!".format(userstr)
+        if create:
+            # Inform the user
+            msg = await ctx.error_reply(msgstr)
+            if ctx.guild.me.guild_permissions.manage_roles:
+                # Offer to create it
+                resp = await ctx.ask("Would you like to create this role?", timeout=30)
+                if resp:
+                    # They accepted, create the role
+                    # Before creation, check if the role name is too long
+                    if len(userstr) > 100:
+                        await ctx.error_reply("Could not create a role with a name over 100 characters long!")
+                    else:
+                        role = await ctx.guild.create_role(
+                            name=userstr,
+                            reason="Interactive role creation for {} (uid:{})".format(ctx.author, ctx.author.id)
+                        )
+                        await msg.delete()
+                        await ctx.reply("You have created the role `{}`!".format(userstr))
+
+            # If we still don't have a role, cancel unless allow_notfound is set
+            if role is None and not allow_notfound:
+                raise SafeCancellation
+        elif not allow_notfound:
+            raise SafeCancellation(msgstr)
+        else:
+            await ctx.error_reply(msgstr)
 
     return role
 
@@ -189,7 +229,7 @@ async def find_channel(ctx, userstr, interactive=False, collection=None, chan_ty
     return chan
 
 @Context.util
-async def find_member(ctx, userstr, interactive=False, collection=None):
+async def find_member(ctx, userstr, interactive=False, collection=None, silent=False):
     """
     Find a guild member given a partial matching string,
     allowing custom member collections.
@@ -205,6 +245,8 @@ async def find_member(ctx, userstr, interactive=False, collection=None):
     collection: List(discord.Member)
         Collection of members to search amongst.
         If none, uses the full guild member list.
+    silent: bool
+        Whether to reply with an error when there are no matches.
 
     Returns
     -------
@@ -283,7 +325,7 @@ async def find_member(ctx, userstr, interactive=False, collection=None):
             # Just select the first one
             member = members[0]
 
-    if member is None:
+    if member is None and not silent:
         await ctx.error_reply("Couldn't find a member matching `{}`!".format(userstr))
 
     return member

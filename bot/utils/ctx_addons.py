@@ -1,10 +1,13 @@
-import asyncio
 import discord
 from cmdClient import Context
 
+from data import tables
+
+from settings import GuildSettings, UserSettings
+
 
 @Context.util
-async def embedreply(ctx, desc, colour=discord.Colour(0x9b59b6), **kwargs):
+async def embed_reply(ctx, desc, colour=discord.Colour(0x9b59b6), **kwargs):
     """
     Simple helper to embed replies.
     All arguments are passed to the embed constructor.
@@ -15,59 +18,51 @@ async def embedreply(ctx, desc, colour=discord.Colour(0x9b59b6), **kwargs):
 
 
 @Context.util
-async def live_reply(ctx, reply_func, update_interval=5, max_messages=20):
+async def error_reply(ctx, error_str, **kwargs):
     """
-    Acts as `ctx.reply`, but asynchronously updates the reply every `update_interval` seconds
-    with the value of `reply_func`, until the value is `None`.
-
-    Parameters
-    ----------
-    reply_func: coroutine
-        An async coroutine with no arguments.
-        Expected to return a dictionary of arguments suitable for `ctx.reply()` and `Message.edit()`.
-    update_interval: int
-        An integer number of seconds.
-    max_messages: int
-        Maximum number of messages in channel to keep the reply live for.
-
-    Returns
-    -------
-    The output message after the first reply.
+    Notify the user of a user level error.
+    Typically, this will occur in a red embed, posted in the command channel.
     """
-    # Send the initial message
-    message = await ctx.reply(**(await reply_func()))
-
-    # Start the counter
-    future = asyncio.ensure_future(_message_counter(ctx.client, ctx.ch, max_messages))
-
-    # Build the loop function
-    async def _reply_loop():
-        while not future.done():
-            await asyncio.sleep(update_interval)
-            args = await reply_func()
-            if args is not None:
-                await message.edit(**args)
-            else:
-                break
-
-    # Start the loop
-    asyncio.ensure_future(_reply_loop())
-
-    # Return the original message
-    return message
+    embed = discord.Embed(
+        colour=discord.Colour.red(),
+        description=error_str
+    )
+    try:
+        message = await ctx.ch.send(embed=embed, reference=ctx.msg, **kwargs)
+        ctx.sent_messages.append(message)
+        return message
+    except discord.Forbidden:
+        message = await ctx.reply(error_str)
+        ctx.sent_messages.append(message)
+        return message
 
 
-async def _message_counter(client, channel, max_count):
-    """
-    Helper for live_reply
-    """
-    # Build check function
-    def _check(message):
-        return message.channel == channel
+def context_property(func):
+    setattr(Context, func.__name__, property(func))
+    return func
 
-    # Loop until the message counter reaches maximum
-    count = 0
-    while count < max_count:
-        await client.wait_for('message', check=_check)
-        count += 1
-    return
+
+@context_property
+def best_prefix(ctx):
+    guild_prefix = tables.guilds.fetch_or_create(ctx.guild.id).prefix if ctx.guild else ''
+    return guild_prefix or ctx.client.prefix
+
+
+@context_property
+def example_group_name(ctx):
+    name = "AwesomeStudyGroup"
+    if ctx.guild:
+        groups = ctx.timers.get_timers_in(ctx.guild.id)
+        if groups:
+            name = groups[0].name
+    return name
+
+
+@context_property
+def guild_settings(ctx):
+    return GuildSettings(ctx.guild.id if ctx.guild else 0)
+
+
+@context_property
+def author_settings(ctx):
+    return UserSettings(ctx.author.id)

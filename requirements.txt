@@ -1,2 +1,4 @@
 discord.py
+pyNacl
 cachetools
+pytz

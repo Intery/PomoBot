@@ -1,21 +1,7 @@
 from cmdClient import check
+from cmdClient.checks import in_guild
 
-
-@check(
-    name="TIMER_ADMIN",
-    msg=("You need to have one of the following to use this command.\n"
-         "- The `manage_guild` permission in this guild.\n"
-         "- The timer admin role (refer to the `adminrole` command).")
-)
-async def timer_admin(ctx, *args, **kwargs):
-    if ctx.author.guild_permissions.manage_guild:
-        return True
-
-    roleid = ctx.client.config.guilds.get(ctx.guild.id, "timeradmin")
-    if roleid is None:
-        return False
-
-    return roleid in [r.id for r in ctx.author.roles]
+from utils.timer_utils import is_timer_admin
 
 
 @check(
@@ -24,3 +10,32 @@ async def timer_admin(ctx, *args, **kwargs):
 )
 async def timer_ready(ctx, *args, **kwargs):
     return ctx.client.interface.ready
+
+
+@check(
+    name="TIMER_ADMIN",
+    msg=("You need to have one of the following to do this!\n"
+         "- The `administrator` server permission.\n"
+         "- The timer admin role (see the `timeradmin` command)."),
+    requires=[in_guild]
+)
+async def timer_admin(ctx, *args, **kwargs):
+    return await is_timer_admin(ctx.author)
+
+
+@check(
+    name="HAS_TIMERS",
+    msg="No study groups have been created! Create a new group with the `newgroup` command.",
+    requires=[in_guild, timer_ready]
+)
+async def has_timers(ctx, *args, **kwargs):
+    return bool(ctx.timers.get_timers_in(ctx.guild.id))
+
+
+@check(
+    name="ADMIN",
+    msg=("You need to be a server admin to do this!"),
+    requires=[in_guild]
+)
+async def guild_admin(ctx, *args, **kwargs):
+    return ctx.author.guild_permissions.administrator
