@@ -947,7 +947,7 @@ class TimerChannel:
                         timer.stop()
 
                     perms = self.channel.permissions_for(self.channel.guild.me)
-                    if perms.send_messges and not perms.embed_links:
+                    if perms.send_messages and not perms.embed_links:
                         try:
                             await self.channel.send(
                                 "I require the `embed links` permission in this channel! Timers stopped."
