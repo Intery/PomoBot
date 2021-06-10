@@ -61,7 +61,7 @@ class NotifyLevel(IntEnum):
     WARNING: Send direct messages for unsubscription warnings.
     ALL: Send direct messages for all stage updates.
     """
-    NONE = 1
+    NEVER = 1
     FINAL = 2
     WARNING = 3
     ALL = 4

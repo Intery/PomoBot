@@ -59,7 +59,7 @@ class notify_level(IntegerEnum, UserSetting):
         'all': "Receive all stage changes and status updates via DM.",
         'warning': "Only receive a DM for inactivity warnings.",
         'final': "Only receive a DM after being kicked for inactivity.",
-        'none': "Never receive status updates via DM."
+        'never': "Never receive status updates via DM."
     }
     accepted_table = prop_tabulate(*zip(*accepted_dict.items()))
 
@@ -67,7 +67,7 @@ class notify_level(IntegerEnum, UserSetting):
         _enum.ALL: "You will receive all stage changes and status updates via DM.",
         _enum.WARNING: "You will only receive a DM for inactivity warnings.",
         _enum.FINAL: "You will only receive a DM after being kicked for inactivity.",
-        _enum.NONE: "You will never receive status updates via DM."
+        _enum.NEVER: "You will never receive status updates via DM."
     }
 
     @property
