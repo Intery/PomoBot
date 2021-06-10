@@ -63,7 +63,7 @@ class notify_level(IntegerEnum, UserSetting):
     }
     accepted_table = prop_tabulate(*zip(*accepted_dict.items()))
 
-    success_response = {
+    success_responses = {
         _enum.ALL: "You will receive all stage changes and status updates via DM.",
         _enum.WARNING: "You will only receive a DM for inactivity warnings.",
         _enum.FINAL: "You will only receive a DM after being kicked for inactivity.",
@@ -83,7 +83,7 @@ class notify_level(IntegerEnum, UserSetting):
     def success_response(self):
         return (
             "Your notification level is now {}.\n{}"
-        ).format(self.formatted, self.success_response[self.value])
+        ).format(self.formatted, self.success_responses[self.value])
 
     @classmethod
     async def _parse_userstr(cls, ctx, id, userstr, **kwargs):
