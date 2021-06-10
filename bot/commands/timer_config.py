@@ -140,7 +140,7 @@ async def cmd_tconfig(ctx):
     else:
         # Check the write ward
         if not await setting.write_ward.run(ctx):
-            return await ctx.error_reply(setting.msg)
+            return await ctx.error_reply(setting.write_ward.msg)
 
         # Write the setting value
         try:
