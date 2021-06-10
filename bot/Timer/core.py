@@ -930,7 +930,7 @@ class TimerChannel:
                 try:
                     await self.pinned_msg.edit(embed=embed)
                 except discord.NotFound:
-                    self.msg = None
+                    self.pinned_msg = None
                 except discord.HTTPException:
                     # An obscure permission error or discord dying?
                     self.failure_count += 1
