@@ -180,7 +180,7 @@ async def cmd_set(ctx):
             "You are not in a study group! Join one with `{prefix}join`.".format(prefix=ctx.best_prefix)
         )
 
-    if sub.timer.settings.admin_locked and not await is_timer_admin(ctx.author):
+    if sub.timer.settings.admin_locked.value and not await is_timer_admin(ctx.author):
         return await ctx.error_reply("This timer may only be setup by timer admins.")
 
     if not ctx.args:
@@ -231,7 +231,7 @@ async def cmd_reset(ctx):
             "You are not in a study group! Join one with `{prefix}join`.".format(prefix=ctx.best_prefix)
         )
 
-    if sub.timer.settings.admin_locked and not await is_timer_admin(ctx.author):
+    if sub.timer.settings.admin_locked.value and not await is_timer_admin(ctx.author):
         return await ctx.error_reply("This timer may only be reset by timer admins.")
 
     if sub.timer.state == TimerState.RUNNING:
@@ -289,7 +289,7 @@ async def cmd_start(ctx):
             "You are not in a study group! Join one with `{prefix}join`.".format(prefix=ctx.best_prefix)
         )
     if sub.timer.state == TimerState.RUNNING:
-        if sub.timer.settings.admin_locked and not await is_timer_admin(ctx.author):
+        if sub.timer.settings.admin_locked.value and not await is_timer_admin(ctx.author):
             return await ctx.error_reply("This timer may only be restarted by timer admins.")
 
         if await ctx.ask("Are you sure you want to **restart** your study group timer?"):
@@ -347,7 +347,7 @@ async def cmd_stop(ctx):
             "You are not in a study group! Join one with `{prefix}join`.".format(prefix=ctx.best_prefix)
         )
 
-    if sub.timer.settings.admin_locked and not await is_timer_admin(ctx.author):
+    if sub.timer.settings.admin_locked.value and not await is_timer_admin(ctx.author):
         return await ctx.error_reply("This timer may only be stopped by timer admins.")
 
     if sub.timer.state != TimerState.RUNNING:
@@ -514,7 +514,7 @@ async def cmd_shift(ctx):
             "You are not in a study group!"
         )
 
-    if sub.timer.settings.admin_locked and not await is_timer_admin(ctx.author):
+    if sub.timer.settings.admin_locked.value and not await is_timer_admin(ctx.author):
         return await ctx.error_reply("This timer may only be shifted by timer admins.")
 
     if sub.timer.state != TimerState.RUNNING:
@@ -571,7 +571,7 @@ async def cmd_skip(ctx):
         )
     timer = sub.timer
 
-    if timer.settings.admin_locked and not await is_timer_admin(ctx.author):
+    if timer.settings.admin_locked.value and not await is_timer_admin(ctx.author):
         return await ctx.error_reply("This timer may only be skipped by timer admins.")
 
     if timer.state != TimerState.RUNNING:
@@ -651,7 +651,7 @@ async def cmd_syncwith(ctx, flags):
         )
     timer = sub.timer
 
-    if timer.settings.admin_locked and not await is_timer_admin(ctx.author):
+    if timer.settings.admin_locked.value and not await is_timer_admin(ctx.author):
         return await ctx.error_reply("This timer may only be synced by a timer admin.")
 
     if timer.state != TimerState.RUNNING:
