@@ -170,6 +170,20 @@ class TimerInterface(Module):
         # Refresh the pinned message
         await channel.update_pin(force=True)
 
+    def move_timer(self, timer, new_channelid):
+        """
+        Bind a timer to a new channelid.
+        """
+        channels = self.guild_channels[timer.data.guildid]
+        old_channel = channels[timer.data.channelid]
+        old_channel.timers.remove(timer)
+        timer.data.channelid = new_channelid
+        timer.load()
+
+        if new_channelid not in channels:
+            channels[new_channelid] = TimerChannel(timer.channel)
+        channels[new_channelid].timers.append(timer)
+
     def fetch_timer(self, roleid):
         row = tables.timers.fetch(roleid)
         if row:

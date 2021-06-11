@@ -95,7 +95,12 @@ class channel(Channel, TimerSetting):
                 raise UserInputError("Cannot send embeds in {}.".format(channel.mention))
             elif not chan_perms.manage_messages:
                 raise UserInputError("Cannot manage messages in {}.".format(channel.mention))
+        else:
+            raise UserInputError("Timer channel cannot be empty!")
         return channelid
+
+    def write(self, **kwargs):
+        self.client.interface.move_timer(self.timer, self.data)
 
 
 @TimerSettings.attach_setting
