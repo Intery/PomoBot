@@ -730,10 +730,32 @@ class Timer:
         """
         log("Subscribing {!r}.".format(member), context="rid:{}".format(self.data.roleid))
         studyrole = GuildSettings(member.guild.id).studyrole.value
-        if studyrole:
-            await member.add_roles(self.role, studyrole, reason="Applying study group role and global studyrole.")
-        else:
-            await member.add_roles(self.role, reason="Applying study group role.")
+        try:
+            if studyrole:
+                await member.add_roles(self.role, studyrole, reason="Applying study group role and global studyrole.")
+            else:
+                await member.add_roles(self.role, reason="Applying study group role.")
+        except discord.Forbidden:
+            desc = (
+                "I don't have enough permissions to subscribe {} to {}!\n"
+            ).format(member.mention, self.role.mention)
+            if not self.guild.me.guild_permissions.manage_roles:
+                desc += "I require the `manage_roles` permission!"
+            elif not self.guild.me.top_role > self.role:
+                desc += (
+                    "My top role needs to be higher in the role list than the study group role {}."
+                ).format(self.role.mention)
+            elif studyrole and not self.guild.me.top_role > studyrole:
+                desc += (
+                    "My top role needs to be higher in the role list than the studyrole {}."
+                ).format(studyrole.mention)
+
+            await self.post(
+                embed=discord.Embed(
+                    description=desc,
+                    colour=discord.Colour.red()
+                )
+            )
         subscriber = TimerSubscriber(self, member.id, member=member)
         if self.state == TimerState.RUNNING:
             subscriber.new_session()
