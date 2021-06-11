@@ -408,7 +408,7 @@ class Timer:
         `True` if the timer successfully loaded.
         `False` if the guild, channel, or role no longer exist.
         """
-        data = self.data
+        data = self.data = tables.timers.fetch(self.data.roleid)
 
         self.guild = client.get_guild(data.guildid)
         if not self.guild:
