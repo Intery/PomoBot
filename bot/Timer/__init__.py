@@ -32,6 +32,9 @@ class TimerInterface(Module):
         self.init_task(self.core_init)
         self.launch_task(self.core_launch)
 
+        self.runloop_task = None
+        self.saveloop_task = None
+
     def core_init(self, _client):
         _client.interface = self
         Context.timers = module
@@ -47,8 +50,14 @@ class TimerInterface(Module):
     async def core_launch(self, _client):
         await self.load_timers()
         self.restore_from_save()
-        asyncio.create_task(self._runloop())
-        asyncio.create_task(self._saveloop())
+        self.runloop_task = asyncio.create_task(self._runloop())
+        self.saveloop_task = asyncio.create_task(self._saveloop())
+
+    def shutdown(self):
+        if self.saveloop_task and not self.saveloop_task.done():
+            self.saveloop_task.cancel()
+        if self.runloop_task and not self.runloop_task.done():
+            self.runloop_task.cancel()
 
     async def _runloop(self):
         while True:
