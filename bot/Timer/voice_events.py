@@ -16,10 +16,10 @@ async def vc_update_handler(client, member, before, after):
         left = voice_channels.get(before.channel.id, None) if before.channel else None
         joined = voice_channels.get(after.channel.id, None) if after.channel else None
 
-        leave = (left and member.id in left and left.data.track_voice_join is not False)
+        leave = (left and member.id in left and left.settings.track_voice_join.value)
         join = (
             joined and
-            joined.data.track_voice_leave is not False and
+            joined.settings.track_voice_leave.value and
             (leave or not client.interface.get_subscriber(member.id, member.guild.id))
         )
         existing_sub = None
