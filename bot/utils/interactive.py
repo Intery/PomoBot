@@ -273,7 +273,24 @@ async def _pager(ctx, out_msg, pages, locked, start_at, add_cancel, **kwargs):
     except discord.Forbidden:
         # We don't have permission to add paging emojis
         # Die as gracefully as we can
-        await ctx.error_reply("Cannot page results because I do not have permissions to react!")
+        if ctx.guild:
+            perms = ctx.ch.permissions_for(ctx.guild.me)
+            if not perms.add_reactions:
+                await ctx.error_reply(
+                    "Cannot page results because I do not have the `add_reactions` permission!"
+                )
+            elif not perms.read_message_history:
+                await ctx.error_reply(
+                    "Cannot page results because I do not have the `read_message_history` permission!"
+                )
+            else:
+                await ctx.error_reply(
+                    "Cannot page results due to insufficient permissions!"
+                )
+        else:
+            await ctx.error_reply(
+                "Cannot page results!"
+            )
         return
 
     # Check function to determine whether a reaction is valid
