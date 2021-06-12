@@ -126,7 +126,7 @@ async def cmd_leaderboard(ctx):
 
 
 _history_pattern = """\
-```md
+{tip}```md
 {day} ({tz}) (Page {page}/{page_count})
 
 Period        | Duration | Focused  | Pattern
@@ -159,6 +159,10 @@ async def cmd_history(ctx):
         The times are determined using your personal timezone (see `{prefix}mytimezone`).
     """
     timezone = ctx.author_settings.timezone.value
+    has_default_tz = (tables.users.fetch_or_create(ctx.author.id).timezone is None)
+    tip = (
+        "**Tip:** Use `{}mytimezone` to view your sessions in your own timezone!".format(ctx.best_prefix)
+    ) if has_default_tz else ''
 
     # Get the saved session rows, ordered by newest first
     rows = tables.session_patterns.select_where(
@@ -245,6 +249,7 @@ async def cmd_history(ctx):
         # Add to page list
         pages.append(
             _history_pattern.format(
+                tip=tip,
                 day=day,
                 tz=timezone,
                 page=i+1,
