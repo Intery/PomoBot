@@ -67,95 +67,95 @@ class Pattern:
         if not string:
             raise InvalidPattern("No pattern provided!")
 
-        # Parsing step
         pattern = None
-        stages = None
-        if ';' in string or ',' in string:
-            # Long form
-            # Accepts stages as 'name, length' or 'name, length, message'
-            short_repr = False
-            stage_blocks = string.strip(';').split(';')
-            stages = []
-            for block in stage_blocks:
-                # Extract stage components
-                parts = block.split(',', maxsplit=2)
-                if len(parts) == 1:
-                    raise InvalidPattern(
-                        "`{}` is not of the form `name, length` or `name, length, message`.".format(block)
-                    )
-                elif len(parts) == 2:
-                    name, dur = parts
-                    message = None
-                else:
-                    name, dur, message = parts
 
-                # Parse duration
-                dur = dur.strip()
-                focus = dur.startswith('*') or dur.endswith('*')
-                if focus:
-                    dur = dur.strip('* ')
+        # First try presets
+        if userid:
+            row = tables.user_presets.select_one_where(userid=userid, preset_name=string)
+            if row:
+                pattern = cls.get(row['patternid'])
 
-                if not dur.isdigit():
-                    raise InvalidPattern(
-                        "`{}` in `{}` couldn't be parsed as a duration.".format(dur, block.strip())
-                    )
+        if not pattern and guildid:
+            row = tables.guild_presets.select_one_where(guildid=guildid, preset_name=string)
+            if row:
+                pattern = cls.get(row['patternid'])
 
-                # Build and add stage
-                stages.append(Stage(name.strip(), int(dur), (message or '').strip(), focus))
-        elif '/' in string:
-            # Short form
-            # Only accepts numerical stages
-            short_repr = True
-            stage_blocks = string.strip('/').split('/')
-            stages = []
+        # Then try string parsing
+        if not pattern:
+            stages = None
+            if ';' in string or ',' in string:
+                # Long form
+                # Accepts stages as 'name, length' or 'name, length, message'
+                short_repr = False
+                stage_blocks = string.strip(';').split(';')
+                stages = []
+                for block in stage_blocks:
+                    # Extract stage components
+                    parts = block.split(',', maxsplit=2)
+                    if len(parts) == 1:
+                        raise InvalidPattern(
+                            "`{}` is not of the form `name, length` or `name, length, message`.".format(block)
+                        )
+                    elif len(parts) == 2:
+                        name, dur = parts
+                        message = None
+                    else:
+                        name, dur, message = parts
 
-            is_work = True  # Whether the current stage is a work or break stage
-            default_focus = '*' not in string  # Whether to use default focus flags
-            for block in stage_blocks:
-                # Parse duration
-                dur = block.strip()
-                focus = dur.startswith('*') or dur.endswith('*')
-                if focus:
-                    dur = dur.strip('* ')
+                    # Parse duration
+                    dur = dur.strip()
+                    focus = dur.startswith('*') or dur.endswith('*')
+                    if focus:
+                        dur = dur.strip('* ')
 
-                if not dur.isdigit():
-                    raise InvalidPattern(
-                        "`{}` couldn't be parsed as a duration.".format(dur)
-                    )
+                    if not dur.isdigit():
+                        raise InvalidPattern(
+                            "`{}` in `{}` couldn't be parsed as a duration.".format(dur, block.strip())
+                        )
 
-                # Build and add stage
-                if is_work:
-                    stages.append(Stage(
-                        cls.default_work_stage,
-                        int(dur),
-                        cls.default_work_message,
-                        focus=True if default_focus else focus
-                    ))
-                else:
-                    stages.append(Stage(
-                        cls.default_break_stage,
-                        int(dur),
-                        cls.default_break_message,
-                        focus=False if default_focus else focus
-                    ))
+                    # Build and add stage
+                    stages.append(Stage(name.strip(), int(dur), (message or '').strip(), focus))
+            elif '/' in string:
+                # Short form
+                # Only accepts numerical stages
+                short_repr = True
+                stage_blocks = string.strip('/').split('/')
+                stages = []
 
-                is_work = not is_work
-        else:
-            # Attempt to find a matching preset
-            if userid:
-                row = tables.user_presets.select_one_where(userid=userid, preset_name=string)
-                if row:
-                    pattern = cls.get(row['patternid'])
+                is_work = True  # Whether the current stage is a work or break stage
+                default_focus = '*' not in string  # Whether to use default focus flags
+                for block in stage_blocks:
+                    # Parse duration
+                    dur = block.strip()
+                    focus = dur.startswith('*') or dur.endswith('*')
+                    if focus:
+                        dur = dur.strip('* ')
 
-            if not pattern and guildid:
-                row = tables.guild_presets.select_one_where(guildid=guildid, preset_name=string)
-                if row:
-                    pattern = cls.get(row['patternid'])
+                    if not dur.isdigit():
+                        raise InvalidPattern(
+                            "`{}` couldn't be parsed as a duration.".format(dur)
+                        )
 
-            if not pattern:
+                    # Build and add stage
+                    if is_work:
+                        stages.append(Stage(
+                            cls.default_work_stage,
+                            int(dur),
+                            cls.default_work_message,
+                            focus=True if default_focus else focus
+                        ))
+                    else:
+                        stages.append(Stage(
+                            cls.default_break_stage,
+                            int(dur),
+                            cls.default_break_message,
+                            focus=False if default_focus else focus
+                        ))
+
+                    is_work = not is_work
+            else:
                 raise InvalidPattern("Patterns must have more than one stage!")
 
-        if stages:
             # Create the stage string
             stage_str = json.dumps(stages)
 
