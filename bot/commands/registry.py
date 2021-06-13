@@ -210,7 +210,11 @@ async def cmd_history(ctx):
                 .astimezone(timezone)
             )
             end = start + dt.timedelta(seconds=row['duration'])
-            pattern = '/'.join(str(stage[1]) for stage in json.loads(row['stage_str'])) if row['stage_str'] else ''
+            if row['stage_str']:
+                stages = json.loads(row['stage_str'])
+                pattern = '/'.join(str(stage[1]) if i < 6 else '...' for i, stage in enumerate(stages[:7]))
+            else:
+                pattern = ''
             row_lines.append(
                 _history_session_pattern.format(
                     start=start.strftime("%H:%M"),
