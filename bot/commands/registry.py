@@ -6,7 +6,7 @@ import discord
 from cmdClient.checks import in_guild
 
 from Timer import module, Pattern
-from Timer.lib import parse_dur
+from Timer.lib import parse_dur, now
 
 from data import tables
 from data.queries import get_session_user_totals
@@ -170,6 +170,28 @@ async def cmd_history(ctx):
         guildid=ctx.guild.id,
         userid=ctx.author.id
     )
+
+    # Add the current session, if it exists
+    sub = ctx.timers.get_subscriber(ctx.author.id, ctx.guild.id)
+    if sub and sub.session:
+        start_time = sub.session_started
+        current_duration = sub.unsaved_time
+        focused_duration = sum(
+            t[0] * stage.duration * 60 + t[1]
+            for t, stage in zip(sub.session, sub.timer.current_pattern)
+            if stage.focus
+        )
+        if sub.timer.current_stage.focus:
+            focused_duration += (now() - sub.timer.stage_start)
+
+        pattern = tables.patterns.fetch(sub.timer.current_pattern.row.patternid).stage_str
+        current_row = {
+            'start_time': start_time,
+            'duration': current_duration,
+            'focused_duration': focused_duration,
+            'stage_str': pattern
+        }
+        rows = [current_row, *rows]
 
     if not rows:
         return await ctx.reply(
