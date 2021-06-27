@@ -418,7 +418,7 @@ async def cmd_stats(ctx):
     session_periods = ((row['start_time'], row['end_time']) for row in session_rows)
 
     # Account for the current day
-    start_time, end_time = next(session_periods, (0, 0))
+    start_time, end_time = (session_rows[0]['start_time'], session_rows[0]['end_time']) if session_rows else (0, 0)
     if sub or end_time > ts_window[0]:
         streak += 1
     day_window = (day_window[0] - dt.timedelta(days=1), day_window[0])
