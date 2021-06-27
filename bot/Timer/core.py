@@ -430,6 +430,8 @@ class Timer:
 
         if data.voice_channelid:
             self.voice_channel = self.guild.get_channel(data.voice_channelid)
+        else:
+            self.voice_channel = None
 
         return True
 
