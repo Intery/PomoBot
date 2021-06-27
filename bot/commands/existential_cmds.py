@@ -129,7 +129,7 @@ async def cmd_newgroup(ctx: Context, flags):
     if voice is None:
         voice_line = (
             "To associate a voice channel (for voice alerts or to auto-join members) "
-            "use `{}tconfig \"{}\" voice <voice-channel>`."
+            "use `{}tconfig \"{}\" voice_channel <voice-channel>`."
         ).format(ctx.best_prefix, name)
     else:
         other = next(
