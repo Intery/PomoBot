@@ -1,89 +1,116 @@
-# import datetime
-import discord
-from cmdClient import cmd
-from cmdClient.checks import in_guild
+import datetime
+import asyncio
 
-from Timer import TimerState, NotifyLevel
+import discord
+
+from meta import client
+from data import tables
+
+from Timer import TimerState, Pattern, module
 
 from utils import timer_utils, interactive, ctx_addons  # noqa
+from utils.live_messages import live_edit
+from utils.timer_utils import is_timer_admin
+from wards import has_timers
 
-from wards import timer_ready
 
-from presets import get_presets
-
-
-@cmd("join",
-     group="Timer",
-     desc="Join a group bound to the current channel.",
-     aliases=['sub'])
-@in_guild()
-@timer_ready()
+@module.cmd("join",
+            group="Timer Usage",
+            short_help="Join a study group.",
+            aliases=['sub'])
+@has_timers()
 async def cmd_join(ctx):
     """
     Usage``:
-        join
-        join <group>
+        {prefix}join
+        {prefix}join <group>
     Description:
-        Join a group in the current channel or guild.
-        If there are multiple matching groups, or no group is provided,
-        will show the group selector.
+        Join a study group, and subscribe to the group timer notifications.
+        When used with no arguments, displays a selection prompt with the available groups.
+
+        The `group` may be given as a group name or partial name. \
+        See `{prefix}groups` for the list of groups in this server.
     Related:
         leave, status, groups, globalgroups
     Examples``:
-        join espresso
+        {prefix}join {ctx.example_group_name}
     """
     # Get the timer they want to join
-    globalgroups = ctx.client.config.guilds.get(ctx.guild.id, 'globalgroups')
-    timer = await ctx.get_timers_matching(ctx.arg_str, channel_only=(not globalgroups), info=True)
+    globalgroups = ctx.guild_settings.globalgroups.value
+    timer = await ctx.get_timers_matching(ctx.args, channel_only=(not globalgroups), info=True)
 
     if timer is None:
-        return await ctx.error_reply(
-            ("No matching groups in this {}.\n"
-             "Use the `groups` command to see the groups in this guild!").format(
-                 'guild' if globalgroups else 'channel'
-             )
-        )
+        if not ctx.timers.get_timers_in(ctx.guild.id):
+            await ctx.error_reply(
+                "There are no study groups to join!\n"
+                "Create a new study group with `{prefix}newgroup <groupname>` "
+                "(e.g. `{prefix}newgroup Pomodoro`).".format(prefix=ctx.best_prefix)
+            )
+        elif not globalgroups and not ctx.timers.get_timers_in(ctx.guild.id, ctx.ch.id):
+            await ctx.error_reply(
+                "No study groups in this channel!\n"
+                "Use `{prefix}groups` to see all server groups.".format(prefix=ctx.best_prefix)
+            )
+        else:
+            await ctx.error_reply(
+                ("No matching groups in this {}.\n"
+                 "Use `{}groups` to see the server study groups!").format(
+                    'server' if globalgroups else 'channel',
+                    ctx.best_prefix
+                )
+            )
+        return
 
     # Query if the author is already in a group
-    current_timer = ctx.client.interface.get_timer_for(ctx.guild.id, ctx.author.id)
-    if current_timer is not None:
-        if current_timer == timer:
-            return await ctx.error_reply("You are already in this group!\n"
-                                         "Use `status` to see the current timer status.")
-
-        chan_info = " in {}".format(current_timer.channel.mention) if current_timer.channel != ctx.ch else ""
-        result = await ctx.ask("You are already in the group `{}`{}.\nAre you sure you want to switch?".format(
-            current_timer.name,
-            chan_info
-        ))
-        if not result:
-            return
-
-        await current_timer.subscribed[ctx.author.id].unsub()
+    sub = ctx.timers.get_subscriber(ctx.author.id, ctx.guild.id)
+    if sub is not None:
+        if sub.timer == timer:
+            return await ctx.error_reply(
+                "You are already in this study group!\n"
+                "Use `{prefix}status` to see the current timer status.".format(prefix=ctx.best_prefix)
+            )
+        else:
+            result = await ctx.ask(
+                "You are already in the group **{}**{}. "
+                "Are you sure you want to switch groups?".format(
+                    sub.timer.name,
+                    " in {}".format(sub.timer.channel.mention) if ctx.ch != sub.timer.channel else ""
+                )
+            )
+            if not result:
+                return
+            # TODO: Vulnerable to interactive race-states
+            await sub.timer.unsubscribe(ctx.author.id)
 
     # Subscribe the member
-    await ctx.client.interface.sub(ctx, ctx.author, timer)
+    new_sub = await timer.subscribe(ctx.author)
+    if sub:
+        new_sub.clocked_time = sub.clocked_time
 
-    # Specify channel info if they are joining from a different channel
+    # Check if member is joining from a different channel
     this_channel = (timer.channel == ctx.ch)
-    chan_info = " in {}".format(timer.channel.mention) if not this_channel else ""
 
-    # Reply with the join message
-    message = "You have joined the group **{}**{}!".format(timer.name, chan_info)
+    # Build and send the join message
+    message = "You have {} **{}**{}!".format(
+        'switched to' if sub is not None else 'joined',
+        timer.name,
+        " in {}".format(timer.channel.mention) if not this_channel else ""
+    )
     if ctx.author.bot:
         message += " Good luck, colleague!"
     if timer.state == TimerState.RUNNING:
-        message += "\nCurrently on stage **{}** with **{}** remaining. {}".format(
-            timer.stages[timer.current_stage].name,
-            timer.pretty_remaining(),
-            timer.stages[timer.current_stage].message
+        message += " Currently on stage **{}** with **{}** remaining. {}".format(
+            timer.current_stage.name,
+            timer.pretty_remaining,
+            timer.current_stage.message
         )
-    elif timer.stages:
-        message += "\nGroup timer is set up but not running. Use `start` to start the timer!"
     else:
-        message += "\nSet up the timer with `set`!"
+        message += (
+            "\nTimer is not running! Start it with `{prefix}start` "
+            "(or `{prefix}start [pattern]` to use a custom timer pattern)."
+        ).format(prefix=ctx.best_prefix)
 
-    await ctx.reply(message)
+    await ctx.reply(message, reference=ctx.msg)
 
     # Poke a welcome message to the timer channel if we are somewhere else
     if not this_channel:
@@ -93,439 +120,592 @@ async def cmd_join(ctx):
         ))
 
 
-@cmd("leave",
-     group="Timer",
-     desc="Leave your current group.",
-     aliases=['unsub'])
-@in_guild()
-@timer_ready()
+@module.cmd("leave",
+            group="Timer Usage",
+            short_help="Leave your current group.",
+            aliases=['unsub'])
+@has_timers()
 async def cmd_unsub(ctx):
     """
     Usage``:
-        leave
+        {prefix}leave
     Description:
-        Leave your current group, and unsubscribe from the group timer.
+        Leave your study group.
     Related:
         join, status, groups
     """
-    timer = ctx.client.interface.get_timer_for(ctx.guild.id, ctx.author.id)
-    if timer is None:
-        return await ctx.error_reply(
-            "You need to join a group before you can leave one!"
+    sub = ctx.timers.get_subscriber(ctx.author.id, ctx.guild.id)
+    if sub is None:
+        await ctx.error_reply(
+            "You are not in a study group! Join one with `{prefix}join`.".format(prefix=ctx.best_prefix)
+        )
+    else:
+        await sub.timer.unsubscribe(ctx.author.id)
+        await ctx.reply(
+            "You left **{}**! You were subscribed for **{}**.".format(
+                sub.timer.name,
+                sub.pretty_clocked
+            ),
+            reference=ctx.msg
         )
 
-    session = await ctx.client.interface.unsub(ctx.guild.id, ctx.author.id)
-    clocked = session[-1]
 
-    dur = int(clocked)
-    hours = dur // 3600
-    minutes = (dur % 3600) // 60
-    seconds = dur % 60
-
-    dur_str = "{:02d}:{:02d}:{:02d}".format(hours, minutes, seconds)
-
-    await ctx.reply("You have been unsubscribed from **{}**! You were subscribed for **{}**.".format(
-        timer.name,
-        dur_str
-    ))
-
-
-@cmd("set",
-     group="Timer",
-     desc="Setup the stages of a group timer.",
-     aliases=['setup', 'reset'])
-@in_guild()
-@timer_ready()
+@module.cmd("setup",
+            group="Timer Control",
+            short_help="Stop and change your group timer pattern.",
+            aliases=['set'])
+@has_timers()
 async def cmd_set(ctx):
     """
     Usage``:
-        set
-        set <setup string>
-        set <presetname>
+        {prefix}setup <timer pattern>
+        {prefix}setup <saved pattern name>
     Description:
-        Setup the stages of the timer you are subscribed to.
-        When used with no parameters, uses the following default setup string:
-        ```
-        Study, 25, Good luck!; Break, 5, Have a rest.;
-        Study, 25, Good luck!; Break, 5, Have a rest.;
-        Study, 25, Good luck!; Long Break, 10, Have a rest.
-        ```
-        Stages are separated by semicolons,
-        and are of the format `stage name, stage duration, stage message`.
-        The `stage message` is optional.
+        Sets your group timer pattern (i.e. the pattern of work/break periods).
 
-        See the `presets` command for more information on using setup presets.
+        See `{prefix}help patterns` and the examples below for more information about the pattern format. \
+        A saved pattern name (see `{prefix}help presets`) may also be used in place of the associated pattern.
+
+        *If the `admin_locked` timer option is set, this command requires timer admin permissions.*
     Related:
-        join, start, presets
+        join, start, reset, savepattern
+    Examples:
+        `{prefix}setup 50/10`  (`50` minutes work followed by `10` minutes break.)
+        `{prefix}setup 25/5/25/5/25/10`  (A standard Pomodoro pattern of work and breaks.)
+        `{prefix}setup Study, 50; Rest, 10`  (Another `50/10` pattern, now with custom stage names.)
     """
-    # Get the timer we are acting on
-    timer = ctx.client.interface.get_timer_for(ctx.guild.id, ctx.author.id)
-    if timer is None:
-        tchan = ctx.client.interface.channels.get(ctx.ch.id, None)
-        if tchan is None or not tchan.timers:
-            await ctx.error_reply("There are no timers in this channel!")
-        else:
-            await ctx.error_reply("Please join a group first!")
-        return
-
-    # If the timer is running, prompt for confirmation
-    if timer.state == TimerState.RUNNING:
-        if ctx.arg_str:
-            if not await ctx.ask("The timer is running! Are you sure you want to reset it?"):
-                return
-        else:
-            if not await ctx.ask("The timer is running! Are you sure you want to reset it? "
-                                 "This will reset the stage sequence to the default!"):
-                return
-
-    if not ctx.arg_str:
-        # Use the default setup string
-        # TODO: Customise defaults for different timers
-        setupstr = (
-            "Study, 25, Good luck!; Break, 5, Have a rest.;"
-            "Study, 25, Good luck!; Break, 5, Have a rest.;"
-            "Study, 25, Good luck!; Long Break, 10, Have a rest."
+    sub = ctx.timers.get_subscriber(ctx.author.id, ctx.guild.id)
+    if sub is None:
+        return await ctx.error_reply(
+            "You are not in a study group! Join one with `{prefix}join`.".format(prefix=ctx.best_prefix)
         )
-        stages = ctx.client.interface.parse_setupstr(setupstr)
-    else:
-        # Parse the provided setup string
-        if "," in ctx.arg_str:
-            # Parse as a standard setup string
-            stages = ctx.client.interface.parse_setupstr(ctx.arg_str)
-            if stages is None:
-                return await ctx.error_reply("Didn't understand setup string!")
-        else:
-            # Parse as a preset
-            presets = get_presets(ctx)
-            if ctx.arg_str in presets:
-                stages = ctx.client.interface.parse_setupstr(presets[ctx.arg_str])
-            else:
-                return await ctx.error_reply(
-                    ("Didn't recognise the timer preset `{}`.\n"
-                     "Use the `presets` command to view available presets.").format(ctx.arg_str)
-                )
 
-    timer.setup(stages)
-    await ctx.reply("Timer pattern set up! Start when ready.")
+    if sub.timer.settings.admin_locked.value and not await is_timer_admin(ctx.author):
+        return await ctx.error_reply("This timer may only be setup by timer admins.")
+
+    if not ctx.args:
+        return await ctx.error_reply(
+            "Please provide a timer pattern! See `{}help setup` for usage".format(ctx.best_prefix)
+        )
+
+    if sub.timer.state == TimerState.RUNNING:
+        if not await ctx.ask("Are you sure you want to **stop and reset** your study group timer?"):
+            return
+
+    pattern = Pattern.from_userstr(ctx.args, timerid=sub.timer.roleid, userid=ctx.author.id, guildid=ctx.guild.id)
+    await sub.timer.setup(pattern, ctx.author.id)
+
+    content = "**{}** set up! Use `{}start` to start when ready.".format(sub.timer.name, ctx.best_prefix)
+    asyncio.create_task(
+        live_edit(
+            None,
+            _status_msg,
+            'status',
+            timer=sub.timer,
+            ctx=ctx,
+            content=content,
+            reference=ctx.msg
+        )
+    )
 
 
-@cmd("start",
-     group="Timer",
-     desc="Start your timer.",
-     aliases=["restart"])
-@in_guild()
-@timer_ready()
+@module.cmd("reset",
+            group="Timer Control",
+            short_help="Reset the timer pattern to the default.")
+@has_timers()
+async def cmd_reset(ctx):
+    """
+    Usage``:
+        {prefix}reset
+    Description:
+        Stop your group timer, and reset the timer pattern to the timer default.
+        (To change the default pattern, see `{prefix}tconfig default_pattern`.)
+
+        *If the `admin_locked` timer option is set, this command requires timer admin permissions.*
+    Related:
+        tconfig, setup, stop
+    """
+    sub = ctx.timers.get_subscriber(ctx.author.id, ctx.guild.id)
+    if sub is None:
+        return await ctx.error_reply(
+            "You are not in a study group! Join one with `{prefix}join`.".format(prefix=ctx.best_prefix)
+        )
+
+    if sub.timer.settings.admin_locked.value and not await is_timer_admin(ctx.author):
+        return await ctx.error_reply("This timer may only be reset by timer admins.")
+
+    if sub.timer.state == TimerState.RUNNING:
+        if not await ctx.ask("Are you sure you want to **stop and reset** your study group timer?"):
+            return
+
+    await sub.timer.setup(sub.timer.default_pattern, ctx.author.id)
+
+    content = "**{}** has been reset! Use `{}start` to start when ready.".format(sub.timer.name, ctx.best_prefix)
+    asyncio.create_task(
+        live_edit(
+            None,
+            _status_msg,
+            'status',
+            timer=sub.timer,
+            ctx=ctx,
+            content=content,
+            reference=ctx.msg
+        )
+    )
+
+
+@module.cmd("start",
+            group="Timer Control",
+            short_help="Start your group timer (and optionally change the pattern).",
+            aliases=["restart"])
+@has_timers()
 async def cmd_start(ctx):
     """
     Usage``:
-        start
-        start <setup string>
+        {prefix}start
+        {prefix}start <timer pattern>
+        {prefix}start <saved pattern name>
+        {prefix}restart
     Description:
-        Start the timer you are subscribed to.
-        Can be used with a setup string to set up and start the timer in one go.
+        Start or restart your group timer.
+
+        To modify the timer pattern (i.e. the pattern of work/break stages), \
+        provide a timer pattern or a saved pattern name. \
+        See `{prefix}help patterns` and the examples below for more information about the pattern format.
+
+        *If the `admin_locked` timer option is set, this command requires timer admin permissions, unless\
+        the timer is already stopped.*
+    Related:
+        stop, setup, tconfig, savepattern
+    Examples:
+        `{prefix}start` (Start/restart the timer with the current pattern.)
+        `{prefix}start 50/10`  (`50` minutes work followed by `10` minutes break.)
+        `{prefix}start 25/5/25/5/25/10`  (A standard Pomodoro pattern of work and breaks.)
+        `{prefix}start Study, 50; Rest, 10`  (Another `50/10` pattern, now with custom stage names.)
     """
-    timer = ctx.client.interface.get_timer_for(ctx.guild.id, ctx.author.id)
-    if timer is None:
-        tchan = ctx.client.interface.channels.get(ctx.ch.id, None)
-        if tchan is None or not tchan.timers:
-            await ctx.error_reply("There are no timers in this channel!")
-        else:
-            await ctx.error_reply("Please join a group first!")
-        return
-    if timer.state == TimerState.RUNNING:
-        if await ctx.ask("Are you sure you want to restart your study group timer?"):
-            timer.stop()
+    sub = ctx.timers.get_subscriber(ctx.author.id, ctx.guild.id)
+    if sub is None:
+        return await ctx.error_reply(
+            "You are not in a study group! Join one with `{prefix}join`.".format(prefix=ctx.best_prefix)
+        )
+    if sub.timer.state == TimerState.RUNNING:
+        if sub.timer.settings.admin_locked.value and not await is_timer_admin(ctx.author):
+            return await ctx.error_reply("This timer may only be restarted by timer admins.")
+
+        if await ctx.ask("Are you sure you want to **restart** your study group timer?"):
+            sub.timer.stop()
         else:
             return
 
-    if ctx.arg_str:
-        stages = ctx.client.interface.parse_setupstr(ctx.arg_str)
+    timer = sub.timer
 
-        if stages is None:
-            return await ctx.error_reply("Didn't understand setup string!")
+    if ctx.args:
+        pattern = Pattern.from_userstr(ctx.args, timerid=sub.timer.roleid, userid=ctx.author.id, guildid=ctx.guild.id)
+        await timer.setup(pattern, ctx.author.id)
 
-        timer.setup(stages)
-
-    if not timer.stages:
-        return await ctx.error_reply("Please set up the timer first!")
+    this_channel = (ctx.ch == timer.channel)
+    content = "Started **{}** in {}!".format(
+        timer.name,
+        timer.channel.mention
+    ) if not this_channel else ''
 
     await timer.start()
+    if ctx.args:
+        asyncio.create_task(
+            live_edit(
+                None,
+                _status_msg,
+                'status',
+                timer=timer,
+                ctx=ctx,
+                content=content,
+                reference=ctx.msg
+            )
+        )
+    elif not this_channel:
+        await ctx.reply(content, reference=ctx.msg)
 
-    if timer.channel != ctx.ch:
-        await ctx.reply("Timer has been started in {}".format(timer.channel.mention))
 
-
-@cmd("stop",
-     group="Timer",
-     desc="Stop your timer.")
-@in_guild()
-@timer_ready()
+@module.cmd("stop",
+            group="Timer Control",
+            short_help="Stop your group timer.")
+@has_timers()
 async def cmd_stop(ctx):
     """
     Usage``:
-        stop
+        {prefix}stop
     Description:
-        Stop the timer you are subscribed to.
-    """
-    timer = ctx.client.interface.get_timer_for(ctx.guild.id, ctx.author.id)
-    if timer is None:
-        tchan = ctx.client.interface.channels.get(ctx.ch.id, None)
-        if tchan is None or not tchan.timers:
-            await ctx.error_reply("There are no timers in this channel!")
-        else:
-            await ctx.error_reply("Please join a group first!")
-        return
-    if timer.state == TimerState.STOPPED:
-        return await ctx.error_reply("Can't stop something that's not moving!")
+        Stop your study group timer.
 
-    if len(timer.subscribed) > 1:
+        *If the `admin_locked` timer option is set, this command requires timer admin permissions.*
+    Related:
+        start, reset, tconfig
+    """
+    sub = ctx.timers.get_subscriber(ctx.author.id, ctx.guild.id)
+    if sub is None:
+        return await ctx.error_reply(
+            "You are not in a study group! Join one with `{prefix}join`.".format(prefix=ctx.best_prefix)
+        )
+
+    if sub.timer.settings.admin_locked.value and not await is_timer_admin(ctx.author):
+        return await ctx.error_reply("This timer may only be stopped by timer admins.")
+
+    if sub.timer.state != TimerState.RUNNING:
+        # TODO: Might want an extra clause when we have Pause states
+        return await ctx.error_reply(
+            "Can't stop something that's not moving! (Your group timer is already stopped.)"
+        )
+
+    if len(sub.timer.subscribers) > 1:
         if not await ctx.ask("There are other people in your study group! "
                              "Are you sure you want to stop the study group timer?"):
             return
 
-    timer.stop()
-    await ctx.reply("Your timer has been stopped.")
+    sub.timer.stop()
+    await ctx.reply("Your group timer has been stopped.")
 
 
-@cmd("groups",
-     group="Timer",
-     desc="View the guild's groups.",
-     aliases=["timers"])
-@in_guild()
-@timer_ready()
+async def _group_msg(msg, ctx=None):
+    """
+    Group message live-editor.
+    """
+    sections = []
+    for tchan in client.interface.guild_channels.get(ctx.guild.id, {}).values():
+        if len(tchan.timers) > 0:
+            sections.append("{}\n\n{}".format(
+                tchan.channel.mention,
+                "\n\n".join(timer.pretty_summary for timer in tchan.timers)
+            ))
+
+    embed = discord.Embed(
+        description="\n\n\n".join(sections) or "No timers in this guild!",
+        colour=discord.Colour(0x9b59b6),
+        title="Study groups",
+        timestamp=datetime.datetime.utcnow()
+    ).set_footer(text="Last Updated")
+
+    if msg:
+        try:
+            await msg.edit(embed=embed)
+            return msg
+        except discord.HTTPException:
+            pass
+    else:
+        return await ctx.reply(embed=embed)
+
+
+@module.cmd("groups",
+            group="Timer Usage",
+            short_help="List the server study groups.",
+            aliases=["timers"])
+@has_timers()
 async def cmd_groups(ctx):
+    """
+    Usage``:
+        {prefix}groups
+    Description:
+        List all the study groups in this server.
+    Related:
+        join, newgroup, delgroup
+    """
     # Handle there being no timers
-    if not ctx.client.interface.get_guild_timers(ctx.guild.id):
-        return await ctx.error_reply("There are no groups set up in this guild!")
-
-    if "live_grouptokens" not in ctx.client.objects:
-        ctx.client.objects["live_grouptokens"] = {}
-    ctx.client.objects["live_grouptokens"][ctx.ch.id] = ctx.msg.id
-
-    async def _groups():
-        # Check if we have a new token
-        if ctx.client.objects["live_grouptokens"].get(ctx.ch.id, 0) != ctx.msg.id:
-            return None
-
-        # Build the embed description
-        sections = []
-        for tchan in ctx.client.interface.guild_channels[ctx.guild.id]:
-            if len(tchan.timers) > 0:
-                sections.append("{}\n\n{}".format(
-                    tchan.channel.mention,
-                    "\n\n".join(timer.pretty_summary() for timer in tchan.timers)
-                ))
-
-        embed = discord.Embed(
-            description="\n\n\n".join(sections) or "No timers in this guild!",
-            colour=discord.Colour(0x9b59b6),
-            title="Group timers in this guild"
+    timers = ctx.timers.get_timers_in(ctx.guild.id)
+    if not timers:
+        return await ctx.error_reply(
+            "This server doesn't have any study groups yet!\n"
+            "Create one with `{prefix}newgroup <groupname>` "
+            "(e.g. `{prefix}newgroup Pomodoro`).".format(prefix=ctx.best_prefix)
         )
-        return {'embed': embed}
 
-    await ctx.live_reply(_groups)
+    asyncio.create_task(live_edit(
+        None,
+        _group_msg,
+        'groups',
+        ctx=ctx
+    ))
 
 
-@cmd("status",
-     group="Timer",
-     desc="View detailed information about a group.",
-     aliases=["group", "timer"])
-@in_guild()
-@timer_ready()
-async def cmd_group(ctx):
+async def _status_msg(msg, timer, ctx, content='', reference=None):
+    embed = discord.Embed(
+        description=timer.status_string(show_seconds=True),
+        colour=discord.Colour(0x9b59b6),
+        timestamp=datetime.datetime.utcnow()
+    ).set_footer(text="Last Updated")
+
+    if msg:
+        try:
+            await msg.edit(content=content, embed=embed)
+            return msg
+        except discord.HTTPException:
+            pass
+    else:
+        return await ctx.reply(content=content, embed=embed, reference=reference)
+
+
+@module.cmd("status",
+            group="Timer Usage",
+            short_help="Show the status of a group.")
+@has_timers()
+async def cmd_status(ctx):
     """
     Usage``:
-        status [group]
+        {prefix}status
+        {prefix}status <group>
     Description:
-        Display detailed information about the current group or the specified group.
+        Display the status of the provided group (or your current/selected group if none was given).
+
+        The `group` may be given as a group name or partial name. \
+        See `{prefix}groups` for the list of groups in this server.
+    Related:
+        groups, start, stop, setup
     """
-    if ctx.arg_str:
-        timer = await ctx.get_timers_matching(ctx.arg_str, channel_only=False)
+    # Get target group
+    if ctx.args:
+        timer = await ctx.get_timers_matching(ctx.args, channel_only=False)
         if timer is None:
-            return await ctx.error_reply("No groups matching `{}`!".format(ctx.arg_str))
+            return await ctx.error_reply("No groups found matching `{}`!".format(ctx.args))
     else:
-        timer = ctx.client.interface.get_timer_for(ctx.guild.id, ctx.author.id)
-        if timer is None:
-            timer = await ctx.get_timers_matching("", channel_only=False)
-            if timer is None:
-                return await ctx.error_reply("No groups are set up in this guild.")
-
-    if "live_statustokens" not in ctx.client.objects:
-        ctx.client.objects["live_statustokens"] = {}
-    ctx.client.objects["live_statustokens"][ctx.ch.id] = ctx.msg.id
-
-    async def _status():
-        # Check if we have a new token
-        if ctx.client.objects["live_statustokens"].get(ctx.ch.id, 0) != ctx.msg.id:
-            return None
-
-        embed = discord.Embed(
-            description=timer.pretty_pinstatus(),
-            colour=discord.Colour(0x9b59b6)
-        )
-        return {'embed': embed}
-
-    await ctx.live_reply(_status)
-
-
-@cmd("notify",
-     group="Timer",
-     desc="Configure your personal notification level.",
-     aliases=["dm"])
-async def cmd_notify(ctx):
-    """
-    Usage``:
-        notify
-        notify <level>
-    Description:
-        View or set your notification level.
-        The possible levels are described below.
-    Notification levels::
-        all: Receive all stage changes and status updates via DM.
-        warnings: Only receive a DM for inactivity warnings (default).
-        kick: Only receive a DM after being kicked for inactivity.
-        none: Never get sent any status updates via DM.
-    Examples``:
-        notify warnings
-    """
-    if not ctx.arg_str:
-        # Read the current level and report
-        level = ctx.client.config.users.get(ctx.author.id, "notify_level") or None
-        level = NotifyLevel(level) if level is not None else NotifyLevel.WARNING
-
-        if level == NotifyLevel.ALL:
-            await ctx.reply("Your notification level is `ALL`.\n"
-                            "You will be notified of all group status changes by direct message.")
-        elif level == NotifyLevel.WARNING:
-            await ctx.reply("Your notification level is `WARNING`.\n"
-                            "You will receive a direct message when you are about to be kicked for inactivity.")
-        elif level == NotifyLevel.FINAL:
-            await ctx.reply("Your notification level is `KICK`.\n"
-                            "You will only be messaged when you are kicked for inactivity.")
-        elif level == NotifyLevel.NONE:
-            await ctx.reply("Your notification level is `NONE`.\n"
-                            "You will never be direct messaged about group status updates.")
-    else:
-        content = ctx.arg_str.lower()
-
-        newlevel = None
-        message = None
-        if content in ["all", "everything"]:
-            newlevel = NotifyLevel.ALL
-            message = ("Your notification level has been set to `ALL`\n"
-                       "You will be notified of all group status changes by direct message.")
-        elif content in ["warnings", "warning"]:
-            newlevel = NotifyLevel.WARNING
-            message = ("Your notification level has been set to `WARNING`.\n"
-                       "You will receive a direct message when you are about to be kicked for inactivity.")
-        elif content in ["final", "kick"]:
-            newlevel = NotifyLevel.FINAL
-            message = ("Your notification level has been set to `KICK`.\n"
-                       "You will only be messaged when you are kicked for inactivity.")
-        elif content in ["none", "dnd"]:
-            newlevel = NotifyLevel.NONE
-            message = ("Your notification level has been set to `NONE`.\n"
-                       "You will never be direct messaged about group status updates.")
+        sub = ctx.timers.get_subscriber(ctx.author.id, ctx.guild.id)
+        if sub:
+            timer = sub.timer
         else:
-            await ctx.error_reply(
-                "I don't understand notification level `{}`! See `help notify` for valid levels.".format(ctx.arg_str)
+            timer = await ctx.get_timers_matching('', channel_only=False)
+            if timer is None:
+                return await ctx.error_reply(
+                    "This server doesn't have any study groups yet!\n"
+                    "Create one with `{prefix}newgroup <groupname>` "
+                    "(e.g. `{prefix}newgroup Pomodoro`).".format(prefix=ctx.best_prefix)
+                )
+
+    asyncio.create_task(
+        live_edit(
+            None,
+            _status_msg,
+            'status',
+            ctx=ctx,
+            timer=timer
+        )
+    )
+
+
+@module.cmd("shift",
+            group="Timer Control",
+            short_help="Add or remove time from the current stage.")
+@has_timers()
+async def cmd_shift(ctx):
+    """
+    Usage``:
+        {prefix}shift
+        {prefix}shift <amount>
+    Description:
+        Adds or removes time from the current stage.
+        When `amount` is *positive*, adds time to the stage, and removes time when `amount` is *negative*.
+        `amount` must be given in minutes, with no units (see examples below).
+        If `amount` is not given, instead aligns the start of the stage to the nearest hour.
+
+        *If the `admin_locked` timer option is set, this command requires timer admin permissions.*
+    Examples``:
+        {prefix}shift +10
+        {prefix}shift -10
+    """
+    sub = ctx.timers.get_subscriber(ctx.author.id, ctx.guild.id)
+    if sub is None:
+        return await ctx.error_reply(
+            "You are not in a study group!"
+        )
+
+    if sub.timer.settings.admin_locked.value and not await is_timer_admin(ctx.author):
+        return await ctx.error_reply("This timer may only be shifted by timer admins.")
+
+    if sub.timer.state != TimerState.RUNNING:
+        return await ctx.error_reply(
+            "You can only shift a group timer while it is running!"
+        )
+
+    if len(sub.timer.subscribers) > 1:
+        if not await ctx.ask("There are other people in your study group! "
+                             "Are you sure you want to shift the study group timer?"):
+            return
+
+    if not ctx.args:
+        quantity = None
+    elif ctx.args.strip('+-').isdigit():
+        quantity = (-1 if ctx.args.startswith('-') else 1) * int(ctx.args.strip('+-'))
+    else:
+        return await ctx.error_reply(
+            "Could not parse `{}` as a shift amount!".format(ctx.args)
+        )
+
+    sub.timer.shift(quantity * 60 if quantity is not None else None)
+    asyncio.create_task(
+        live_edit(
+            None,
+            _status_msg,
+            'status',
+            timer=sub.timer,
+            ctx=ctx,
+            content="Timer shifted!",
+            reference=ctx.msg
+        )
+    )
+
+
+@module.cmd("skip",
+            group="Timer Control",
+            short_help="Skip the current stage.")
+@has_timers()
+async def cmd_skip(ctx):
+    """
+    Usage``:
+        {prefix}skip
+        {prefix}skip <number>
+    Description:
+        Skip the current timer stage, or the number of stages given.
+    Examples``:
+        {prefix}skip 1
+    """
+    sub = ctx.timers.get_subscriber(ctx.author.id, ctx.guild.id)
+    if sub is None:
+        return await ctx.error_reply(
+            "You are not in a study group!"
+        )
+    timer = sub.timer
+
+    if timer.settings.admin_locked.value and not await is_timer_admin(ctx.author):
+        return await ctx.error_reply("This timer may only be skipped by timer admins.")
+
+    if timer.state != TimerState.RUNNING:
+        return await ctx.error_reply(
+            "You can only skip stages of a group timer while it is running!"
+        )
+
+    if len(timer.subscribers) > 1:
+        if not await ctx.ask("There are other people in your study group! "
+                             "Are you sure you want to skip forwards?"):
+            return
+
+    # Collect the number of stages to skip
+    count = 1
+    pattern_len = len(timer.current_pattern.stages)
+    if ctx.args:
+        if not ctx.args.isdigit():
+            return await ctx.error_reply(
+                "**Usage:** `{prefix}skip [number].\n"
+                "Couldn't parse the number of stages to skip.".format(prefix=ctx.best_prefix)
             )
-        if newlevel is not None:
-            # Update the db entry
-            ctx.client.config.users.set(ctx.author.id, "notify_level", newlevel.value)
+        if len(ctx.args) > 10 or int(ctx.args) > pattern_len:
+            return await ctx.error_reply(
+                "Maximum number of skippable stages is `{}`.".format(pattern_len)
+            )
+        count = int(ctx.args)
+        if count == 0:
+            return await ctx.error_reply(
+                "Skipping no stages.. done?"
+            )
 
-            # Update any existing timers
-            for subber in ctx.client.interface.get_subs_for(ctx.author.id):
-                subber.notify = NotifyLevel(newlevel)
+    # Calculate the shift time
+    shift_by = timer.remaining + sum(
+        timer.current_pattern.stages[(timer.stage_index + i + 1) % pattern_len].duration * 60
+        for i in range(count - 1)
+    ) - 1
 
-            # Send the update message
-            await ctx.reply(message)
+    timer.shift(-1 * shift_by)
+    content = "**{}** stages skipped!".format(count) if count > 1 else "Stage skipped!"
+    await asyncio.sleep(1)
+    asyncio.create_task(
+        live_edit(
+            None,
+            _status_msg,
+            'status',
+            timer=sub.timer,
+            ctx=ctx,
+            content=content,
+            reference=ctx.msg
+        )
+    )
 
 
-@cmd("rename",
-     group="Timer",
-     desc="Rename your group.")
-@in_guild()
-@timer_ready()
-async def cmd_rename(ctx):
+@module.cmd("syncwith",
+            group="Timer Control",
+            short_help="Sync the timer with another group.",
+            flags=('end',))
+@has_timers()
+async def cmd_syncwith(ctx, flags):
     """
     Usage``:
-        rename <groupname>
+        {prefix}syncwith <group> [--end]
     Description:
-        Set the name of your current group to `groupname`.
-    Arguments::
-        groupname: The new name for your group, less than `20` characters long.
-    Related:
-        join, status, groups
+        Synchronise your current timer with the timer of the provided group.
+        This is usually done by *moving* the start of your current stage to the start of the target group's stage.
+        If the `-end` flag is added, instead moves the *end* of your current stage to match the end of the target stage.
+
+        *If the `admin_locked` timer option is set, this command requires timer admin permissions.*
+    Examples``:
+        {prefix}syncwith {ctx.example_group_name}
+        {prefix}syncwith {ctx.example_group_name} --end
     """
-    timer = ctx.client.interface.get_timer_for(ctx.guild.id, ctx.author.id)
-    if timer is None:
+    sub = ctx.timers.get_subscriber(ctx.author.id, ctx.guild.id)
+    if sub is None:
         return await ctx.error_reply(
-            "You need to join a group first!"
+            "You are not in a study group!"
         )
-    if not (0 < len(ctx.arg_str) < 20):
+    timer = sub.timer
+
+    if timer.settings.admin_locked.value and not await is_timer_admin(ctx.author):
+        return await ctx.error_reply("This timer may only be synced by a timer admin.")
+
+    if timer.state != TimerState.RUNNING:
         return await ctx.error_reply(
-            "Please supply a new group name under `20` characters long!\n"
-            "**Usage:** `rename <groupname>`"
+            "Timers may only be synced while they are running!"
         )
-    timer.name = ctx.arg_str
-    await ctx.embedreply("Your group has been renamed to **{}**.".format(ctx.arg_str))
 
+    if ctx.args:
+        target = await ctx.get_timers_matching(ctx.args, channel_only=False)
+        if target is None and ctx.args.isdigit():
+            # Last-ditch check, accept roleids from foreign guilds
+            roleid = int(ctx.args)
+            timer_row = tables.timers.fetch(roleid)
+            if timer_row is not None and timer_row.guildid in ctx.timers.guild_channels:
+                target = next(
+                    (t for t in ctx.timers.guild_channels[timer_row.guildid][timer_row.channelid].timers
+                     if t.roleid == roleid),
+                    None
+                )
 
-@cmd("syncwith",
-     group="Timer",
-     desc="Sync the start of your group timer with another group")
-@in_guild()
-@timer_ready()
-async def cmd_syncwith(ctx):
-    """
-    Usage``:
-        syncwith <group>
-    Description:
-        Align the start of your group timer with the other group.
-        This will possibly change your stage without notification.
-    Arguments::
-        group: The name of the group to sync with.
-    Related:
-        join, status, groups, set
-    """
-    # Check an argumnet was given
-    if not ctx.arg_str:
-        return await ctx.error_reply("No group name provided!\n**Usage:** `syncwith <group>`.")
+        if target is None:
+            return await ctx.error_reply("No target groups found matching `{}`!".format(ctx.args))
+    else:
+        return await ctx.error_reply(
+            "**Usage:** `{}syncwith <group> [--end]`\n"
+            "No target group provided!".format(ctx.best_prefix)
+        )
 
-    # Check the author is in a group
-    current_timer = ctx.client.interface.get_timer_for(ctx.guild.id, ctx.author.id)
-    if current_timer is None:
-        return await ctx.error_reply("You can only sync a group you are a member of!")
+    if len(timer.subscribers) > 1:
+        if not await ctx.ask("There are other people in your study group! "
+                             "Are you sure you want to sync it with **{}**?".format(target.name)):
+            return
 
-    # Get the target timer to sync with
-    sync_timer = await ctx.get_timers_matching(ctx.arg_str, channel_only=False)
-    if sync_timer is None:
-        return await ctx.error_reply("No groups matching `{}`!".format(ctx.arg_str))
+    if target.state != TimerState.RUNNING:
+        return await ctx.error_reply(
+            "Target timer isn't running! Use `{}restart` if you want to restart your timer.".format(ctx.best_prefix)
+        )
 
-    # Check both timers are set up
-    if not sync_timer.stages or not current_timer.stages:
-        return await ctx.error_reply("Both the current and target timer must be set up first!")
+    # Perform the actual sync
+    diff = target.stage_start - timer.stage_start
+    if flags['end']:
+        diff += (target.current_stage.duration - timer.current_stage.duration) * 60
 
-    # Calculate the total duration from the start of the timer
-    target_duration = sum(stage.duration for i, stage in enumerate(sync_timer.stages) if i < sync_timer.current_stage)
-    target_duration *= 60
-    target_duration += sync_timer.now() - sync_timer.current_stage_start
+    timer.shift(diff)
 
-    # Calculate the target stage in the current timer
-    i = -1
-    elapsed = 0
-    while elapsed < target_duration:
-        i = (i + 1) % len(current_timer.stages)
-        elapsed += current_timer.stages[i].duration * 60
-
-    # Calculate new stage start
-    new_stage_start = sync_timer.now() - (current_timer.stages[i].duration * 60 - (elapsed - target_duration))
-
-    # Change the stage and adjust the time
-    await current_timer.change_stage(i, notify=False, inactivity_check=False, report_old=False)
-    current_timer.current_stage_start = new_stage_start
-    current_timer.remaining = elapsed - target_duration
-
-    # Notify the user
-    await ctx.embedreply(current_timer.pretty_pinstatus(), title="Timers synced!")
+    content = "Timer synced with **{}**!".format(target.name)
+    asyncio.create_task(
+        live_edit(
+            None,
+            _status_msg,
+            'status',
+            timer=sub.timer,
+            ctx=ctx,
+            content=content,
+            reference=ctx.msg
+        )
+    )

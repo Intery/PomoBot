@@ -1,31 +1,34 @@
 import os
 
-from config import conf
-from logger import log
-from cmdClient.cmdClient import cmdClient
+from data import tables, data  # noqa
+from meta import client, conf
 
-from BotData import BotData
-from Timer import TimerInterface
+import Timer  # noqa
+
 
 # Get the real location
 __location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
 
 
-# Load required data from configs
-masters = [int(master.strip()) for master in conf['masters'].split(",")]
-config = BotData(app="pomo", data_file="data/config_data.db", version=0)
-
-# Initialise the client
-client = cmdClient(prefix=conf['prefix'], owners=masters)
-client.config = config
-client.log = log
-
 # Load the commands
 client.load_dir(os.path.join(__location__, 'commands'))
+client.load_dir(os.path.join(__location__, 'plugins'))
+# TODO: Recursive plugin loader
 
 # Initialise the timer
-TimerInterface(client, conf['session_store'])
+# TimerInterface(client, conf['session_store'])
+client.initialise_modules()
+
+
+@client.set_valid_prefixes
+async def valid_prefixes(client, message):
+    return (
+        (tables.guilds.fetch_or_create(message.guild.id).prefix if message.guild else None) or client.prefix,
+        '<@{}>'.format(client.user.id),
+        '<@!{}>'.format(client.user.id),
+    )
+
 
 # Log and execute!
-log("Initial setup complete, logging in", context='SETUP')
+client.log("Initial setup complete, logging in", context='SETUP')
 client.run(conf['TOKEN'])

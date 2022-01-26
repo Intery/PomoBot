@@ -1,154 +1,294 @@
-from cmdClient import cmd
+import datetime
+import discord
 from cmdClient.checks import in_guild
 
-from Timer import TimerInterface
+from Timer import Pattern, module
 
-from wards import timer_admin
+from data import tables
 from utils import timer_utils, interactive, ctx_addons  # noqa
-from utils.lib import paginate_list
+from utils.lib import prop_tabulate, paginate_list
+from utils.timer_utils import is_timer_admin
 
 
-def get_presets(ctx):
+def _fetch_presets(ctx):
     """
-    Get the valid setup string presets in the current context.
+    Fetch the current valid presets in this context.
+    Returns a list of the form (preset_type, preset_row).
+    Accounts for user pattern name overrides.
     """
+    user_rows = tables.user_presets.select_where(userid=ctx.author.id)
+    guild_rows = tables.guild_presets.select_where(guildid=ctx.guild.id)
+
     presets = {}
-    if ctx.guild:
-        presets.update(ctx.client.config.guilds.get(ctx.guild.id, "timer_presets") or {})  # Guild presets
-    presets.update(ctx.client.config.users.get(ctx.author.id, "timer_presets") or {})  # Personal presets
+    presets.update(
+        {row['preset_name'].lower(): (0, row) for row in guild_rows}
+    )
+    presets.update(
+        {row['preset_name'].lower(): (1, row) for row in user_rows}
+    )
+    return list(reversed(list(presets.values())))
 
-    return presets
 
-
-def preset_summary(setupstr):
+def _format_preset(preset_type, preset_row):
     """
-    Return a summary string of stage durations for the given setup string.
+    Format the available patterns into a pretty-viewable list.
+    Returns a list of tuples `(pattern_str, preset_type, pattern)`.
     """
-    # First compile the preset
-    stages = TimerInterface.parse_setupstr(setupstr)
-    return "/".join(str(stage.duration) for stage in stages)
+    pattern = Pattern.get(preset_row['patternid'])
+    return "{} ({}, {})".format(
+                preset_row['preset_name'],
+                'Personal' if preset_type == 1 else 'Server',
+                pattern.display(brief=True)
+            )
 
 
-@cmd("preset",
-     group="Timer",
-     desc="Create, view, and remove personal or guild setup string presets.",
-     aliases=["addpreset", "presets", "rmpreset"])
-async def cmd_preset(ctx):
+@module.cmd("savepattern",
+            group="Saved Patterns",
+            short_help="Name a given pattern.")
+@in_guild()
+async def cmd_savepattern(ctx):
     """
     Usage``:
-        presets
-        preset [presetname]
-        addpreset [presetname]
-        rmpreset <presetname>
+        {prefix}savepattern <pattern>
     Description:
-        Create, view, and remove personal or guild setup string presets.
-        See the `setup` command documentation for more information about setup string format.
-
-        Note that the `Timer Admin` role is required to create or remove guild presets.
-    Forms::
-        preset: Display information about the specified preset.
-        presets: List available personal and guild presets.
-        addpreset: Create a new preset. Prompts for name if not provided.
-        rmpreset: Remove the specified preset.
-    Related:
-        setup
+        See `{prefix}help patterns` for more information about timer patterns.
+    Examples``:
+        {prefix}savepattern 50/10
+        {prefix}savepattern Work, 50, Good luck!; Break, 10, Have a rest.
     """
-    presets = get_presets(ctx)
-    preset_list = list(presets.items())
-    pretty_presets = [
-        "{}\t ({})".format(name, preset_summary(preset))
-        for name, preset in preset_list
-    ]
-
-    if ctx.alias.lower() == "presets":
-        # Handle having no presets
-        if not pretty_presets:
-            return await ctx.embedreply("No presets available! Start creating presets with `addpreset`")
-
-        # Format and return the list
-        pages = paginate_list(pretty_presets, title="Available Timer Presets")
-        return await ctx.pager(pages)
-    elif ctx.alias.lower() == "preset":
-        # Prompt for the preset if not given
-        if not ctx.arg_str:
-            preset = preset_list[await ctx.selector("Please select a preset.", pretty_presets)]
-        elif ctx.arg_str not in presets:
-            return await ctx.error_reply("Unrecognised preset `{}`.\n"
-                                         "Use `presets` to view the available presets.".format(ctx.arg_str))
+    if ctx.args:
+        pattern = Pattern.from_userstr(ctx.args)
+    else:
+        # Get the current timer pattern, if applicable
+        sub = ctx.timers.get_subscriber(ctx.author.id, ctx.guild.id)
+        if sub is not None:
+            pattern = sub.timer.current_pattern or sub.timer.default_pattern
         else:
-            preset = (ctx.arg_str, presets[ctx.arg_str])
+            # Request pattern
+            pattern = Pattern.from_userstr(await ctx.input(
+                "Please enter the timer pattern you want to save.\n"
+                "**Tip**: See `{}help patterns` for more information "
+                "about creating or using timer patterns".format(ctx.best_prefix)
+            ))
 
-        # Build preset info
-        preset_info = "Preset `{}` with stages `{}`.\n```{}```".format(preset[0], preset_summary(preset[1]), preset[1])
+    # Confirm and request name
+    name = await ctx.input(
+        "Please enter a name for this pattern."
+        "```{}```".format(pattern.display())
+    )
+    if not name:
+        return
 
-        # Output info
-        await ctx.reply(preset_info)
-    elif ctx.alias.lower() == "addpreset":
-        # Start by prompting for a name if none was given
-        name = ctx.arg_str or await ctx.input("Please enter a name for the new timer preset.")
+    # Ask for preset type
+    pattern_type = 0
+    if await is_timer_admin(ctx.author):
+        options = (
+            "User Pattern (the saved pattern is available to you across all servers).",
+            "Server Pattern (the saved pattern is available to everyone in this server)."
+        )
+        pattern_type = await ctx.selector("Would you like to create a User or Server pattern?", options)
 
-        # Ragequit on names with bad characters
-        if "," in name or ";" in name:
-            return await ctx.error_reply("Preset names must not contain `,` or `;`.")
-
-        # Prompt for the setup string
-        stages = None
-        while stages is None:
-            setupstr = await ctx.input(
-                "Please enter the timer preset setup string."
+    # Save preset
+    if pattern_type == 0:
+        # User preset
+        tables.user_presets.insert(userid=ctx.author.id, preset_name=name, patternid=pattern.row.patternid)
+        await ctx.reply(
+            "Saved the new user pattern `{name}`. "
+            "Apply it by joining any study group and writing `{prefix}start {name}`.".format(
+                prefix=ctx.best_prefix,
+                name=name
             )
-            # Handle cancellation
-            if setupstr == "c":
-                return await ctx.embedreply("Preset creation cancelled by user.")
-
-            # Parse setup string to ensure validity
-            stages = TimerInterface.parse_setupstr(setupstr)
-            if stages is None:
-                await ctx.error_reply("Setup string not understood.")
-
-        # Prompt for whether to add a guild or personal preset
-        preset_type = 1  # 0 is Guild preset and 1 is personal preset
-        if await in_guild.run(ctx) and await timer_admin.run(ctx):
-            preset_type = await ctx.selector(
-                "What type of preset would you like to create?",
-                ["Guild preset (available to everyone in the guild)",
-                 "Personal preset (only available to yourself)"]
+        )
+    else:
+        # Guild preset
+        tables.guild_presets.insert(
+            guildid=ctx.guild.id,
+            preset_name=name,
+            created_by=ctx.author.id,
+            patternid=pattern.row.patternid
+        )
+        await ctx.reply(
+            "Saved the new guild pattern `{name}`. "
+            "Any member may now apply it by joining a study group and writing `{prefix}start {name}`.".format(
+                prefix=ctx.best_prefix,
+                name=name
             )
+        )
+
+
+@module.cmd("delpattern",
+            group="Saved Patterns",
+            short_help="Delete a saved pattern by name.",
+            aliases=('rmpattern',))
+@in_guild()
+async def cmd_delpattern(ctx):
+    """
+    Usage``:
+        {prefix}delpattern <pattern-name>
+    Description:
+        Delete the given saved pattern.
+    """
+    is_admin = await is_timer_admin(ctx.author)
+    is_user_preset = True
+
+    if not ctx.args:
+        # Prompt for a saved pattern to remove
+        presets = _fetch_presets(ctx)
+        if not presets:
+            return await ctx.reply(
+                "No saved patterns exist yet! "
+                "See `{}help savepattern` for information about saving a pattern.".format(
+                    ctx.best_prefix
+                )
+            )
+        if not is_admin:
+            presets = [preset for preset in presets if preset[0] == 1]
+
+        ids = [row['patternid'] for _, row in presets]
+        tables.patterns.fetch_rows_where(patternid=ids)
+
+        pretty_presets = [_format_preset(t, row) for t, row in presets]
+        result = await ctx.selector(
+            "Please select a saved pattern to remove.",
+            pretty_presets
+        )
+        is_user_preset, row = presets[result]
+    else:
+        row = tables.user_presets.select_one_where(userid=ctx.author.id, preset_name=ctx.args)
+        if not row:
+            is_user_preset = False
+            row = tables.guild_presets.select_one_where(guildid=ctx.guild.id, preset_name=ctx.args)
+        if not row:
+            return await ctx.error_reply(
+                "No saved pattern found called `{}`.".format(ctx.args)
+            )
+
+    if not is_user_preset:
+        if is_admin:
+            tables.guild_presets.delete_where(guildid=ctx.guild.id, preset_name=ctx.args)
+            await ctx.reply("Removed saved server pattern `{}`.".format(row['preset_name']))
         else:
-            # Non-admins don't get an option
-            preset_type = 1
+            await ctx.error_reply("You need timer admin permissions to remove a saved server pattern!")
+    else:
+        tables.user_presets.delete_where(userid=ctx.author.id, preset_name=ctx.args)
+        await ctx.reply("Removed saved personal pattern `{}`.".format(row['preset_name']))
 
-        # Create the preset
-        if preset_type == 0:
-            guild_presets = ctx.client.config.guilds.get(ctx.guild.id, "timer_presets") or {}
-            if name in guild_presets and not await ctx.ask("Preset `{}` already exists, overwrite?".format(name)):
-                return
-            guild_presets[name] = setupstr
-            ctx.client.config.guilds.set(ctx.guild.id, "timer_presets", guild_presets)
-            await ctx.embedreply("Guild preset `{}` created.".format(name))
-        elif preset_type == 1:
-            personal_presets = ctx.client.config.users.get(ctx.author.id, "timer_presets") or {}
-            if name in personal_presets and not await ctx.ask("Preset `{}` already exists, overwrite?".format(name)):
-                return
-            personal_presets[name] = setupstr
-            ctx.client.config.users.set(ctx.author.id, "timer_presets", personal_presets)
-            await ctx.embedreply("Personal preset `{}` created.".format(name))
-    elif ctx.alias.lower() == "rmpreset":
-        # Handle trying to remove nonexistent preset
-        if not ctx.arg_str:
-            return await ctx.error_reply("Please provide a preset to remove.")
-        if ctx.arg_str not in presets:
-            return await ctx.error_reply("Unrecognised preset `{}`.".format(ctx.arg_str))
 
-        personal_presets = ctx.client.config.users.get(ctx.author.id, "timer_presets") or {}
-        if ctx.arg_str in personal_presets:
-            personal_presets.pop(ctx.arg_str)
-            ctx.client.config.users.set(ctx.author.id, "timer_presets", personal_presets)
-        else:
-            if not await timer_admin.run(ctx):
-                return await ctx.error_reply("You need to be a timer admin to remove guild presets.")
-            guild_presets = ctx.client.config.guilds.get(ctx.guild.id, "timer_presets") or {}
-            guild_presets.pop(ctx.arg_str)
-            ctx.client.config.guilds.set(ctx.guild.id, "timer_presets", guild_presets)
+@module.cmd("savedpatterns",
+            group="Saved Patterns",
+            short_help="View the accessible saved patterns.",
+            aliases=('presets', 'patterns', 'showpatterns'))
+@in_guild()
+async def cmd_savedpatterns(ctx):
+    """
+    Usage``:
+        {prefix}savedpatterns
+    Description:
+        List the personal and server-wide saved patterns accessible for custom timer setup.
+    """
+    presets = _fetch_presets(ctx)
+    if not presets:
+        return await ctx.reply(
+            "No saved patterns exist yet! See `{}help savepattern` for information about saving a pattern.".format(
+                ctx.best_prefix
+            )
+        )
 
-        await ctx.embedreply("Preset `{}` has been deleted.".format(ctx.arg_str))
+    ids = [row['patternid'] for _, row in presets]
+    tables.patterns.fetch_rows_where(patternid=ids)
+
+    pretty_presets = [_format_preset(t, row) for t, row in presets]
+
+    await ctx.pager(
+        paginate_list(pretty_presets, title="Saved Patterns")
+    )
+
+
+@module.cmd("showpattern",
+            group="Saved Patterns",
+            short_help="View details about a saved pattern.")
+@in_guild()
+async def cmd_showpattern(ctx):
+    """
+    Usage``:
+        {prefix}showpattern <pattern-name>
+    Description:
+        Show details about the provided saved pattern.
+    """
+    is_user_preset = True
+    if not ctx.args:
+        # Prompt for a saved pattern to display
+        presets = _fetch_presets(ctx)
+        if not presets:
+            return await ctx.reply(
+                "No saved patterns exist yet! See `{}help savepattern` for information about saving a pattern.".format(
+                    ctx.best_prefix
+                )
+            )
+
+        ids = [row['patternid'] for _, row in presets]
+        tables.patterns.fetch_rows_where(patternid=ids)
+
+        pretty_presets = [_format_preset(t, row) for t, row in presets]
+        result = await ctx.selector(
+            "Please select a saved pattern to view.",
+            pretty_presets
+        )
+        is_user_preset, row = presets[result]
+    else:
+        row = tables.user_presets.select_one_where(userid=ctx.author.id, preset_name=ctx.args)
+        if not row:
+            is_user_preset = False
+            row = tables.guild_presets.select_one_where(guildid=ctx.guild.id, preset_name=ctx.args)
+
+        if not row:
+            return await ctx.error_reply(
+                "No saved pattern found called `{}`.".format(ctx.args)
+            )
+
+    # Extract pattern information
+    pid = row['patternid']
+    pattern = Pattern.get(pid)
+
+    if is_user_preset:
+        session_data = tables.sessions.select_one_where(
+            select_columns=('SUM(duration)', ),
+            patternid=pid,
+            userid=ctx.author.id
+        )
+        setup_data = tables.timer_pattern_history.select_one_where(
+            select_columns=('COUNT()', ),
+            patternid=pid,
+            modified_by=ctx.author.id
+        )
+    else:
+        session_data = tables.sessions.select_one_where(
+            select_columns=('SUM(duration)', ),
+            patternid=pid,
+            guildid=ctx.guild.id
+        )
+        setup_data = tables.timer_pattern_history.select_one_where(
+            select_columns=('COUNT()', ),
+            patternid=pid,
+            timerid=[timer.role.id for timer in ctx.timers.get_timers_in(ctx.guild.id)]
+        )
+    total_dur = session_data[0] or 0
+    times_used = setup_data[0] or 0
+
+    table = prop_tabulate(
+        ('Created by', 'Used', 'Used for'),
+        ("<@{}>".format(ctx.author.id if is_user_preset else row['created_by']) if row['created_by'] else "Unknown",
+         "{} times".format(times_used),
+         "{:.1f} hours (total session duration)".format(total_dur / 3600))
+    )
+    embed = discord.Embed(
+        title="{} Pattern `{}`".format('User' if is_user_preset else 'Guild', row['preset_name']),
+        description=table,
+        timestamp=datetime.datetime.utcfromtimestamp(row['created_at'])
+    ).set_footer(
+        text='Created At'
+    ).add_field(
+        name='Pattern',
+        value="```{}```".format(pattern.display())
+    )
+    await ctx.reply(embed=embed)

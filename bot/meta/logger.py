@@ -1,7 +1,8 @@
 import sys
+import traceback
 import logging
 
-from config import conf
+from .config import conf
 
 
 # Setup the logger
@@ -17,6 +18,8 @@ logger.addHandler(term_handler)
 logger.setLevel(logging.INFO)
 
 
-def log(message, context="Global".center(18, '='), level=logging.INFO):
+def log(message, context="Global".center(22, '='), level=logging.INFO, add_exc_info=False):
+    if add_exc_info:
+        message += '\n{}'.format(traceback.format_exc())
     for line in message.split('\n'):
-        logger.log(level, '[{}] {}'.format(str(context).center(18, '='), line))
+        logger.log(level, '[{}] {}'.format(str(context).center(22, '='), line))
